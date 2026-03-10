@@ -1,9 +1,11 @@
 <script lang="ts">
   import { saveApiKey, getApiKey } from '$lib/storage';
   import type { AIProviderID } from '$lib/services/ai/types';
+  import { registerShortcuts } from '$lib/services/shortcuts/shortcutManager';
   import ProviderSelection from '$lib/components/settings/ProviderSelection.svelte';
   import ApiKeysList from '$lib/components/settings/ApiKeysList.svelte';
   import GlobalShortcuts from '$lib/components/settings/GlobalShortcuts.svelte';
+  import SystemPrompt from '$lib/components/settings/SystemPrompt.svelte';
 
   let openAiKey = $state('');
   let anthropicKey = $state('');
@@ -13,6 +15,7 @@
   let copyKey = $state('CommandOrControl+Shift+C');
   let activeProvider = $state<AIProviderID>('openai');
   let activeModel = $state('');
+  let systemPrompt = $state('');
   let webSearchEnabled = $state(false);
 
   let savedStatus = $state('');
@@ -29,6 +32,7 @@
       copyKey = localStorage.getItem('copyKey') || 'CommandOrControl+Shift+C';
       activeProvider = (localStorage.getItem('activeProvider') as AIProviderID) || 'openai';
       activeModel = localStorage.getItem('activeModel') || '';
+      systemPrompt = localStorage.getItem('systemPrompt') || '';
       webSearchEnabled = localStorage.getItem('webSearchEnabled') === 'true';
       isLoaded = true;
     } catch (e) {
@@ -53,7 +57,11 @@
       localStorage.setItem('copyKey', copyKey);
       localStorage.setItem('activeProvider', activeProvider);
       localStorage.setItem('activeModel', activeModel);
+      localStorage.setItem('systemPrompt', systemPrompt);
       localStorage.setItem('webSearchEnabled', webSearchEnabled.toString());
+
+      // Re-register global shortcuts with updated bindings
+      await registerShortcuts();
 
       savedStatus = 'Saved ✓';
       setTimeout(() => (savedStatus = ''), 2000);
@@ -78,6 +86,7 @@
     void copyKey;
     void activeProvider;
     void activeModel;
+    void systemPrompt;
     void webSearchEnabled;
 
     scheduleSave();
@@ -88,6 +97,8 @@
   <ProviderSelection bind:activeProvider bind:activeModel />
 
   <ApiKeysList bind:openAiKey bind:anthropicKey bind:geminiKey />
+
+  <SystemPrompt bind:value={systemPrompt} />
 
   <GlobalShortcuts bind:copyKey bind:screenshotKey bind:webSearchEnabled />
 </div>

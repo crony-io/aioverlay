@@ -8,6 +8,11 @@
     sendMessageAndStream
   } from '$lib/stores/chatStore';
   import type { AIStreamHandle } from '$lib/services/ai/types';
+  import {
+    registerShortcuts,
+    onShortcutAction,
+    cleanupShortcuts
+  } from '$lib/services/shortcuts/shortcutManager';
 
   import Titlebar from '$lib/components/Titlebar.svelte';
   import ChatArea from '$lib/components/ChatArea.svelte';
@@ -30,11 +35,28 @@
   /** Shortcut to current messages */
   let messages = $derived(currentConversation.messages);
 
-  /** Load conversations on mount */
+  /** Load conversations and register global shortcuts on mount */
   $effect(() => {
     loadConversationList().then((list) => {
       conversations = list;
     });
+
+    onShortcutAction((action, payload) => {
+      activeTab = 'chat';
+      if (action === 'captureText' && payload) {
+        handleMessageSubmit(payload);
+      }
+      if (action === 'captureScreen') {
+        // TODO: Screen capture flow (Phase 3)
+        console.warn('Screen capture triggered — not yet implemented');
+      }
+    });
+
+    registerShortcuts();
+
+    return () => {
+      cleanupShortcuts();
+    };
   });
 
   /** Auto-dismiss error after 5 seconds */
