@@ -48,7 +48,7 @@
     overflow-x: auto;
     margin-top: 0.5rem;
     margin-bottom: 0.75rem;
-    border: 1px string rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   :global(.markdown-body code) {

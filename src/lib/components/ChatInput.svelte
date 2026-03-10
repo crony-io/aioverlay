@@ -1,11 +1,17 @@
 <script lang="ts">
-  let { onSubmit } = $props<{ onSubmit: (text: string) => void }>();
+  let { onSubmit, disabled = false } = $props<{
+    onSubmit: (text: string) => void;
+    disabled?: boolean;
+  }>();
+
   let inputText = $state('');
+  let textareaEl: HTMLTextAreaElement | undefined = $state();
 
   function handleSubmit() {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || disabled) return;
     onSubmit(inputText);
     inputText = '';
+    resetHeight();
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -14,20 +20,47 @@
       handleSubmit();
     }
   }
+
+  /** Auto-grow textarea up to 4 lines */
+  function handleInput() {
+    if (!textareaEl) return;
+    textareaEl.style.height = 'auto';
+    const maxHeight = 4 * 24; // ~4 rows
+    textareaEl.style.height = `${Math.min(textareaEl.scrollHeight, maxHeight)}px`;
+  }
+
+  function resetHeight() {
+    if (!textareaEl) return;
+    textareaEl.style.height = 'auto';
+  }
 </script>
 
-<div class="mt-4 flex gap-3 relative">
-  <textarea 
+<div class="flex gap-3 relative">
+  <textarea
+    bind:this={textareaEl}
     bind:value={inputText}
     onkeydown={handleKeydown}
-    placeholder="Ask Ai Overlay... (Enter to send)" 
+    oninput={handleInput}
+    {disabled}
+    placeholder={disabled ? 'Waiting for response...' : 'Ask Ai Overlay... (Enter to send)'}
     rows="1"
-    class="w-full resize-none rounded-xl border border-white/10 bg-white/5 py-3 pl-4 pr-12 text-sm text-white placeholder-white/40 shadow-inner focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 custom-scrollbar"
+    class="w-full resize-none rounded-xl border py-3 pl-4 pr-12 text-sm text-white shadow-inner focus:outline-none focus:ring-1 custom-scrollbar disabled:opacity-50 disabled:cursor-not-allowed"
+    style="
+      background: var(--surface-input);
+      border-color: var(--border-default);
+      --tw-ring-color: var(--border-focus);
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    "
+    style:color="var(--text-primary)"
   ></textarea>
-  <button 
+  <button
     onclick={handleSubmit}
-    disabled={!inputText.trim()}
-    class="absolute right-2 top-2 bottom-2 rounded-lg bg-indigo-500 px-3 py-1 font-semibold text-white shadow-lg transition-all hover:bg-indigo-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+    disabled={!inputText.trim() || disabled}
+    class="absolute right-2 top-2 bottom-2 rounded-lg px-3 py-1 font-semibold text-white shadow-lg focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+    style="
+      background: var(--accent-primary);
+      transition: background var(--transition-fast);
+    "
     aria-label="Send Message"
     title="Send Message"
   >
@@ -36,18 +69,3 @@
     </svg>
   </button>
 </div>
-
-<style>
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-  }
-</style>
-
