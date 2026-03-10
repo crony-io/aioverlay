@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { saveApiKey, getApiKey } from '$lib/storage';
+  import { saveApiKey, getApiKey, removeApiKey } from '$lib/storage';
   import type { AIProviderID } from '$lib/services/ai/types';
   import { registerShortcuts } from '$lib/services/shortcuts/shortcutManager';
   import ProviderSelection from '$lib/components/settings/ProviderSelection.svelte';
@@ -18,11 +18,14 @@
   let activeProvider = $state<AIProviderID>('openai');
   let activeModel = $state('');
   let systemPrompt = $state('');
-  let webSearchEnabled = $state(false);
 
   let savedStatus = $state('');
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   let isLoaded = $state(false);
+
+  /** Track previous shortcut values to avoid unnecessary re-registration */
+  let prevCopyKey = '';
+  let prevScreenshotKey = '';
 
   async function loadSettings() {
     try {
@@ -35,7 +38,8 @@
       activeProvider = (localStorage.getItem('activeProvider') as AIProviderID) || 'openai';
       activeModel = localStorage.getItem('activeModel') || '';
       systemPrompt = localStorage.getItem('systemPrompt') || '';
-      webSearchEnabled = localStorage.getItem('webSearchEnabled') === 'true';
+      prevCopyKey = copyKey;
+      prevScreenshotKey = screenshotKey;
       isLoaded = true;
     } catch (e) {
       console.error('Failed to load settings:', e);
@@ -51,19 +55,27 @@
 
   async function performSave() {
     try {
+      // Save or remove API keys based on whether they have a value
       if (openAiKey) await saveApiKey('openai', openAiKey);
+      else await removeApiKey('openai');
+
       if (anthropicKey) await saveApiKey('anthropic', anthropicKey);
+      else await removeApiKey('anthropic');
+
       if (geminiKey) await saveApiKey('gemini', geminiKey);
+      else await removeApiKey('gemini');
 
       localStorage.setItem('screenshotKey', screenshotKey);
       localStorage.setItem('copyKey', copyKey);
       localStorage.setItem('activeProvider', activeProvider);
       localStorage.setItem('activeModel', activeModel);
       localStorage.setItem('systemPrompt', systemPrompt);
-      localStorage.setItem('webSearchEnabled', webSearchEnabled.toString());
-
-      // Re-register global shortcuts with updated bindings
-      await registerShortcuts();
+      // Only re-register shortcuts when bindings actually changed
+      if (copyKey !== prevCopyKey || screenshotKey !== prevScreenshotKey) {
+        await registerShortcuts();
+        prevCopyKey = copyKey;
+        prevScreenshotKey = screenshotKey;
+      }
 
       savedStatus = 'Saved ✓';
       setTimeout(() => (savedStatus = ''), 2000);
@@ -89,7 +101,6 @@
     void activeProvider;
     void activeModel;
     void systemPrompt;
-    void webSearchEnabled;
 
     scheduleSave();
   });
@@ -106,7 +117,7 @@
 
   <ModelDownloader />
 
-  <GlobalShortcuts bind:copyKey bind:screenshotKey bind:webSearchEnabled />
+  <GlobalShortcuts bind:copyKey bind:screenshotKey />
 </div>
 
 <!-- Auto-save status indicator -->

@@ -8,6 +8,7 @@ import type {
   AIStreamHandle
 } from '$lib/services/ai/types';
 import { toOpenAIMessage } from '$lib/services/ai/messageUtils';
+import { parseOpenAISSEChunk, sanitizeApiError } from '$lib/services/ai/utils/sseParser';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -19,21 +20,6 @@ const OPENAI_MODELS: AIModelOption[] = [
   { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', contextWindow: 1047576, supportsVision: true },
   { id: 'o4-mini', label: 'o4-mini', contextWindow: 200000, supportsVision: true }
 ];
-
-/** Parse an SSE line from OpenAI's streaming response */
-function parseSSEChunk(line: string): string | null {
-  if (!line.startsWith('data: ')) return null;
-
-  const data = line.slice(6).trim();
-  if (data === '[DONE]') return null;
-
-  try {
-    const parsed = JSON.parse(data);
-    return parsed.choices?.[0]?.delta?.content ?? null;
-  } catch {
-    return null;
-  }
-}
 
 export const openaiProvider: AIProvider = {
   id: 'openai',
@@ -72,7 +58,7 @@ export const openaiProvider: AIProvider = {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`OpenAI API error (${response.status}): ${errorBody}`);
+        throw new Error(sanitizeApiError('OpenAI', response.status, errorBody));
       }
 
       const reader = response.body?.getReader();
@@ -91,7 +77,7 @@ export const openaiProvider: AIProvider = {
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          const chunk = parseSSEChunk(line);
+          const chunk = parseOpenAISSEChunk(line);
           if (chunk) {
             fullContent += chunk;
             onChunk(chunk);

@@ -4,9 +4,9 @@
     loadConversationList,
     loadConversation,
     deleteConversation,
-    createConversation,
-    sendMessageAndStream
-  } from '$lib/stores/chatStore';
+    createConversation
+  } from '$lib/chatHistory';
+  import { sendMessageAndStream } from '$lib/stores/chatStore';
   import type { AIStreamHandle } from '$lib/services/ai/types';
   import {
     registerShortcuts,

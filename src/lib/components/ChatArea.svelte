@@ -2,6 +2,7 @@
   import type { ChatMessage } from '$lib/types';
   import Markdown from '$lib/components/Markdown.svelte';
   import TypingIndicator from '$lib/components/TypingIndicator.svelte';
+  import { formatRelativeTime } from '$lib/utils/formatTime';
   import { MessageSquare } from 'lucide-svelte';
 
   let {
@@ -31,21 +32,6 @@
       });
     }
   });
-
-  /** Format a timestamp into a relative time string */
-  function formatTime(timestamp: number): string {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const minutes = Math.floor(diff / 60000);
-
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-
-    return new Date(timestamp).toLocaleDateString();
-  }
 </script>
 
 <div
@@ -81,7 +67,7 @@
           {/if}
         </div>
         <span class="mt-1 px-2 text-[10px]" style="color: var(--text-muted);">
-          {formatTime(msg.timestamp)}
+          {formatRelativeTime(msg.timestamp)}
         </span>
       </div>
     {/each}

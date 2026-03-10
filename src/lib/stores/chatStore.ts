@@ -5,14 +5,7 @@ import type {
   AIMessage,
   AIContentPart
 } from '$lib/services/ai/types';
-import {
-  loadConversationList,
-  loadConversation,
-  saveConversation,
-  deleteConversation,
-  createConversation,
-  generateTitle
-} from '$lib/chatHistory';
+import { saveConversation, generateTitle } from '$lib/chatHistory';
 import { getProvider } from '$lib/services/ai/registry';
 import { getApiKey } from '$lib/storage';
 
@@ -54,6 +47,9 @@ function toAIMessage(msg: { role: string; content: string }): AIMessage {
   return { role: msg.role as AIMessage['role'], content: parts };
 }
 
+/** Valid provider IDs for localStorage validation */
+const VALID_PROVIDERS: AIProviderID[] = ['openai', 'anthropic', 'gemini', 'local'];
+
 /** Settings keys stored in localStorage */
 const SETTINGS_KEYS = {
   ACTIVE_PROVIDER: 'activeProvider',
@@ -62,7 +58,11 @@ const SETTINGS_KEYS = {
 } as const;
 
 export function getActiveProvider(): AIProviderID {
-  return (localStorage.getItem(SETTINGS_KEYS.ACTIVE_PROVIDER) as AIProviderID) || 'openai';
+  const stored = localStorage.getItem(SETTINGS_KEYS.ACTIVE_PROVIDER);
+  if (stored && VALID_PROVIDERS.includes(stored as AIProviderID)) {
+    return stored as AIProviderID;
+  }
+  return 'openai';
 }
 
 export function getActiveModel(): string {
@@ -160,7 +160,8 @@ export async function sendMessageAndStream(opts: {
           role: 'assistant',
           content: streamedContent,
           timestamp: Date.now(),
-          model
+          model,
+          incomplete: true
         };
         conversation.messages = [...conversation.messages, partialMessage];
         await saveConversation(conversation);
@@ -174,12 +175,3 @@ export async function sendMessageAndStream(opts: {
     return null;
   }
 }
-
-export {
-  loadConversationList,
-  loadConversation,
-  saveConversation,
-  deleteConversation,
-  createConversation,
-  generateTitle
-};

@@ -8,6 +8,7 @@ import type {
   AIStreamHandle
 } from '$lib/services/ai/types';
 import { toGeminiMessage, getTextContent } from '$lib/services/ai/messageUtils';
+import { sanitizeApiError } from '$lib/services/ai/utils/sseParser';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -77,7 +78,7 @@ export const geminiProvider: AIProvider = {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`Gemini API error (${response.status}): ${errorBody}`);
+        throw new Error(sanitizeApiError('Gemini', response.status, errorBody));
       }
 
       const reader = response.body?.getReader();

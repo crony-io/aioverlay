@@ -8,6 +8,7 @@ import type {
   AIStreamHandle
 } from '$lib/services/ai/types';
 import { toOpenAIMessage } from '$lib/services/ai/messageUtils';
+import { parseOpenAISSEChunk, sanitizeApiError } from '$lib/services/ai/utils/sseParser';
 
 /** Default local llama-server endpoint (OpenAI-compatible) */
 const LOCAL_API_URL = 'http://127.0.0.1:8080/v1/chat/completions';
@@ -20,21 +21,6 @@ const LOCAL_MODELS: AIModelOption[] = [
     supportsVision: false
   }
 ];
-
-/** Parse an SSE line (same format as OpenAI) */
-function parseSSEChunk(line: string): string | null {
-  if (!line.startsWith('data: ')) return null;
-
-  const data = line.slice(6).trim();
-  if (data === '[DONE]') return null;
-
-  try {
-    const parsed = JSON.parse(data);
-    return parsed.choices?.[0]?.delta?.content ?? null;
-  } catch {
-    return null;
-  }
-}
 
 export const localProvider: AIProvider = {
   id: 'local',
@@ -70,7 +56,7 @@ export const localProvider: AIProvider = {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`Local server error (${response.status}): ${errorBody}`);
+        throw new Error(sanitizeApiError('Local server', response.status, errorBody));
       }
 
       const reader = response.body?.getReader();
@@ -89,7 +75,7 @@ export const localProvider: AIProvider = {
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          const chunk = parseSSEChunk(line);
+          const chunk = parseOpenAISSEChunk(line);
           if (chunk) {
             fullContent += chunk;
             onChunk(chunk);

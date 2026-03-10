@@ -1,26 +1,30 @@
 <script lang="ts">
   import { renderMarkdown, applyHighlighting } from '$lib/services/markdown/renderer';
+  import type { RenderResult } from '$lib/services/markdown/renderer';
   import type { Action } from 'svelte/action';
 
   let { content = '' } = $props<{ content: string }>();
 
-  let html = $derived(renderMarkdown(content));
+  let renderResult = $derived(renderMarkdown(content));
 
-  /** Inject sanitized HTML and apply syntax highlighting */
-  const renderHtml: Action<HTMLElement, string> = (node, contentHtml) => {
-    node.innerHTML = contentHtml;
-    applyHighlighting(node);
+  /** Inject sanitized HTML and apply syntax highlighting with scoped blocks */
+  const renderHtml: Action<HTMLElement, RenderResult> = (node, result) => {
+    node.innerHTML = result.html;
+    applyHighlighting(node, result.pendingBlocks);
 
     return {
-      update(newHtml: string) {
-        node.innerHTML = newHtml;
-        applyHighlighting(node);
+      update(newResult: RenderResult) {
+        node.innerHTML = newResult.html;
+        applyHighlighting(node, newResult.pendingBlocks);
       }
     };
   };
 </script>
 
-<div class="markdown-body text-sm leading-relaxed text-white/90" use:renderHtml={html}></div>
+<div
+  class="markdown-body text-sm leading-relaxed text-white/90"
+  use:renderHtml={renderResult}
+></div>
 
 <style>
   :global(.markdown-body p) {

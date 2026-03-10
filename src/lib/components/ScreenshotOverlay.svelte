@@ -15,19 +15,22 @@
   let endY = $state(0);
   let hasSelection = $state(false);
 
-  let imgSrc = $derived(`data:image/png;base64,${screenshotData.data}`);
+  /** Cached HTMLImageElement — loaded once, reused for every redraw */
+  let cachedImg: HTMLImageElement | null = null;
 
   /** Scale factors for mapping canvas coords to actual image pixels */
   let scaleX = $state(1);
   let scaleY = $state(1);
 
-  /** Draw the screenshot onto the canvas when mounted */
+  /** Load the screenshot image once on mount and draw it */
   $effect(() => {
     if (!canvasEl) return;
 
     const img = new Image();
     img.onload = () => {
       if (!canvasEl) return;
+
+      cachedImg = img;
 
       // Fit canvas to window
       const displayW = window.innerWidth;
@@ -43,57 +46,52 @@
 
       ctx.drawImage(img, 0, 0, displayW, displayH);
     };
-    img.src = imgSrc;
+    img.src = `data:image/png;base64,${screenshotData.data}`;
   });
 
-  /** Redraw the screenshot with selection overlay */
+  /** Redraw the screenshot with selection overlay using the cached image */
   function redraw() {
-    if (!canvasEl) return;
+    if (!canvasEl || !cachedImg) return;
 
     const ctx = canvasEl.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
-    img.onload = () => {
-      if (!canvasEl || !ctx) return;
-      ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height);
+    ctx.drawImage(cachedImg, 0, 0, canvasEl.width, canvasEl.height);
 
-      if (hasSelection || isSelecting) {
-        const x = Math.min(startX, endX);
-        const y = Math.min(startY, endY);
-        const w = Math.abs(endX - startX);
-        const h = Math.abs(endY - startY);
+    if (hasSelection || isSelecting) {
+      const x = Math.min(startX, endX);
+      const y = Math.min(startY, endY);
+      const w = Math.abs(endX - startX);
+      const h = Math.abs(endY - startY);
 
-        // Dim everything outside selection
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+      // Dim everything outside selection
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
 
-        // Clear the selected area to show original
-        ctx.clearRect(x, y, w, h);
-        ctx.drawImage(img, x * scaleX, y * scaleY, w * scaleX, h * scaleY, x, y, w, h);
+      // Clear the selected area to show original
+      ctx.clearRect(x, y, w, h);
+      ctx.drawImage(cachedImg, x * scaleX, y * scaleY, w * scaleX, h * scaleY, x, y, w, h);
 
-        // Selection border
-        ctx.strokeStyle = '#818cf8';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 3]);
-        ctx.strokeRect(x, y, w, h);
-        ctx.setLineDash([]);
+      // Selection border
+      ctx.strokeStyle = '#818cf8';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.setLineDash([]);
 
-        // Dimension label
-        const realW = Math.round(w * scaleX);
-        const realH = Math.round(h * scaleY);
-        if (realW > 0 && realH > 0) {
-          const label = `${realW} × ${realH}`;
-          ctx.font = '12px system-ui';
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-          const textW = ctx.measureText(label).width + 12;
-          ctx.fillRect(x, y - 22, textW, 20);
-          ctx.fillStyle = '#fff';
-          ctx.fillText(label, x + 6, y - 7);
-        }
+      // Dimension label
+      const realW = Math.round(w * scaleX);
+      const realH = Math.round(h * scaleY);
+      if (realW > 0 && realH > 0) {
+        const label = `${realW} × ${realH}`;
+        ctx.font = '12px system-ui';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        const textW = ctx.measureText(label).width + 12;
+        ctx.fillRect(x, y - 22, textW, 20);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, x + 6, y - 7);
       }
-    };
-    img.src = imgSrc;
+    }
   }
 
   function handleMouseDown(e: MouseEvent) {
@@ -160,15 +158,15 @@
       return;
     }
 
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, realX, realY, realW, realH, 0, 0, realW, realH);
-      const dataUrl = cropCanvas.toDataURL('image/png');
-      // Strip the data:image/png;base64, prefix
-      const base64 = dataUrl.split(',')[1] || '';
-      onConfirm(base64);
-    };
-    img.src = imgSrc;
+    if (!cachedImg) {
+      useFullScreenshot();
+      return;
+    }
+
+    ctx.drawImage(cachedImg, realX, realY, realW, realH, 0, 0, realW, realH);
+    const dataUrl = cropCanvas.toDataURL('image/png');
+    const base64 = dataUrl.split(',')[1] || '';
+    onConfirm(base64);
   }
 </script>
 

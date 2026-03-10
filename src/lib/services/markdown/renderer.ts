@@ -73,50 +73,59 @@ async function highlightCode(code: string, lang: string): Promise<string> {
   }
 }
 
-/** Configure marked with a custom code renderer that uses Shiki */
-function createRenderer(): RendererObject {
-  return {
-    code({ text, lang }: { text: string; lang?: string | undefined }): string {
-      const language = lang || 'text';
-      // Return a placeholder that will be replaced async
-      const id = `shiki-${Math.random().toString(36).slice(2, 10)}`;
-      // Store code block info for async processing
-      pendingBlocks.set(id, { code: text, lang: language });
-      const escapedCode = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return `<div id="${id}" class="code-block-wrapper relative group">
+/** Per-render code block collection to avoid module-level mutable state races */
+let currentRenderBlocks: Map<string, { code: string; lang: string }> = new Map();
+
+/** Custom code renderer that collects blocks for async Shiki highlighting */
+const codeRenderer: RendererObject = {
+  code({ text, lang }: { text: string; lang?: string | undefined }): string {
+    const language = lang || 'text';
+    const id = `shiki-${Math.random().toString(36).slice(2, 10)}`;
+    currentRenderBlocks.set(id, { code: text, lang: language });
+    const escapedCode = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `<div id="${id}" class="code-block-wrapper relative group">
         <button class="copy-btn absolute top-2 right-2 rounded-md px-2 py-1 text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Copy code">Copy</button>
         <pre><code>${escapedCode}</code></pre>
       </div>`;
-    }
-  };
-}
+  }
+};
 
-/** Map of placeholder IDs to their code info for async highlighting */
-const pendingBlocks = new Map<string, { code: string; lang: string }>();
+/** Configure marked once at module level */
+marked.use({ renderer: codeRenderer });
 
-/** DOMPurify config: allow button elements, inline styles (for Shiki), and data-* attributes */
+/** DOMPurify config: allow button elements and data attributes for code copy */
 const SANITIZE_CONFIG = {
   ADD_TAGS: ['button'],
-  ADD_ATTR: ['class', 'id', 'aria-label', 'data-bound', 'style']
+  ADD_ATTR: ['class', 'id', 'aria-label', 'data-bound']
 };
+
+/** Result of rendering markdown, includes pending blocks scoped to this render */
+export interface RenderResult {
+  html: string;
+  pendingBlocks: Map<string, { code: string; lang: string }>;
+}
 
 /**
  * Render markdown content to sanitized HTML.
- * Returns HTML immediately with plain code blocks,
- * syntax highlighting is applied async via applyHighlighting.
+ * Returns HTML and a scoped map of pending code blocks for async highlighting.
  */
-export function renderMarkdown(content: string): string {
-  if (!content) return '';
+export function renderMarkdown(content: string): RenderResult {
+  if (!content) return { html: '', pendingBlocks: new Map() };
 
-  pendingBlocks.clear();
+  currentRenderBlocks = new Map();
 
   try {
-    marked.use({ renderer: createRenderer() });
     const rawHtml = marked.parse(content, { async: false }) as string;
-    return String(DOMPurify.sanitize(rawHtml, SANITIZE_CONFIG));
+    const html = String(DOMPurify.sanitize(rawHtml, SANITIZE_CONFIG));
+    const pendingBlocks = currentRenderBlocks;
+    currentRenderBlocks = new Map();
+    return { html, pendingBlocks };
   } catch (error) {
     console.error('Error rendering markdown:', error);
-    return '<p class="text-red-400">Error rendering content</p>';
+    return {
+      html: '<p class="text-red-400">Error rendering content</p>',
+      pendingBlocks: new Map()
+    };
   }
 }
 
@@ -124,14 +133,15 @@ export function renderMarkdown(content: string): string {
  * Apply syntax highlighting to a container element.
  * Replaces placeholder elements with Shiki-highlighted code.
  */
-export async function applyHighlighting(container: HTMLElement): Promise<void> {
-  // Wire up copy buttons on all code-block-wrappers
+export async function applyHighlighting(
+  container: HTMLElement,
+  blocks: Map<string, { code: string; lang: string }>
+): Promise<void> {
   attachCopyHandlers(container);
 
-  if (pendingBlocks.size === 0) return;
+  if (blocks.size === 0) return;
 
-  const entries = [...pendingBlocks.entries()];
-  pendingBlocks.clear();
+  const entries = [...blocks.entries()];
 
   await Promise.all(
     entries.map(async ([id, { code, lang }]) => {

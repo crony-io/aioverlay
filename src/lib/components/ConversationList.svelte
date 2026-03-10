@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ConversationMeta } from '$lib/types';
+  import { formatRelativeTimeShort } from '$lib/utils/formatTime';
   import { Plus, Trash2 } from 'lucide-svelte';
 
   let {
@@ -15,24 +16,6 @@
     onNewChat: () => void;
     onDelete: (id: string) => void;
   }>();
-
-  /** Format date for display */
-  function formatDate(timestamp: number): string {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const minutes = Math.floor(diff / 60000);
-
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m`;
-
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
-
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}d`;
-
-    return new Date(timestamp).toLocaleDateString();
-  }
 </script>
 
 <div class="flex flex-col gap-1">
@@ -72,7 +55,7 @@
               {conv.title}
             </p>
             <p class="text-[10px]" style="color: var(--text-muted);">
-              {formatDate(conv.updatedAt)} · {conv.messageCount} msgs
+              {formatRelativeTimeShort(conv.updatedAt)} · {conv.messageCount} msgs
             </p>
           </div>
 

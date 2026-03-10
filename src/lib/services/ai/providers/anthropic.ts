@@ -8,6 +8,7 @@ import type {
   AIStreamHandle
 } from '$lib/services/ai/types';
 import { toAnthropicMessage } from '$lib/services/ai/messageUtils';
+import { sanitizeApiError } from '$lib/services/ai/utils/sseParser';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_VERSION = '2023-06-01';
@@ -95,7 +96,7 @@ export const anthropicProvider: AIProvider = {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`Anthropic API error (${response.status}): ${errorBody}`);
+        throw new Error(sanitizeApiError('Anthropic', response.status, errorBody));
       }
 
       const reader = response.body?.getReader();

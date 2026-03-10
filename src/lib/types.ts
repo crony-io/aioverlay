@@ -8,6 +8,8 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   model?: string;
+  /** Whether this message was truncated due to stream abort */
+  incomplete?: boolean;
 }
 
 /** Metadata for a conversation (used in the index) */

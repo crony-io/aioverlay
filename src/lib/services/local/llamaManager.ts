@@ -17,10 +17,15 @@ export function getSavedModelPath(): string {
   return localStorage.getItem(STORAGE_KEYS.MODEL_PATH) || '';
 }
 
-/** Get saved port from localStorage */
+/** Get saved port from localStorage with NaN/range validation */
 export function getSavedPort(): number {
   const stored = localStorage.getItem(STORAGE_KEYS.PORT);
-  return stored ? parseInt(stored, 10) : DEFAULT_PORT;
+  if (!stored) return DEFAULT_PORT;
+
+  const parsed = parseInt(stored, 10);
+  if (isNaN(parsed) || parsed < 1 || parsed > 65535) return DEFAULT_PORT;
+
+  return parsed;
 }
 
 /** Save model path to localStorage */
