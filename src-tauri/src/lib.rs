@@ -34,6 +34,12 @@ pub fn run() {
             llama::process::start_llama_server,
             llama::process::stop_llama_server,
             llama::process::is_llama_server_running,
+            llama::models::search_hf_models,
+            llama::models::get_model_files,
+            llama::models::download_model,
+            llama::models::list_downloaded_models,
+            llama::models::delete_model,
+            llama::models::get_models_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,4 +1,5 @@
-import { Stronghold, Store, Client } from '@tauri-apps/plugin-stronghold';
+import { Stronghold } from '@tauri-apps/plugin-stronghold';
+import type { Store, Client } from '@tauri-apps/plugin-stronghold';
 
 const VAULT_PATH = 'aioverlay_keys.vault';
 const STORE_NAME = 'api_keys';

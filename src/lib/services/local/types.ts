@@ -36,3 +36,40 @@ export interface DownloadProgress {
   phase: 'downloading' | 'extracting' | 'complete' | 'error';
   error: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Model Downloader types
+// ---------------------------------------------------------------------------
+
+/** HuggingFace model search result */
+export interface HfModelResult {
+  id: string;
+  author: string | null;
+  downloads: number;
+  likes: number;
+}
+
+/** Info about a GGUF file in a HuggingFace repo */
+export interface GgufFileInfo {
+  filename: string;
+  size: number;
+}
+
+/** Metadata for a locally downloaded GGUF model */
+export interface DownloadedModel {
+  repoId: string;
+  filename: string;
+  filePath: string;
+  size: number;
+  downloadedAt: string;
+}
+
+/** Progress event payload for model file downloads */
+export interface ModelDownloadProgress {
+  filename: string;
+  bytesDownloaded: number;
+  totalBytes: number;
+  /** One of: "downloading", "complete", "error" */
+  phase: 'downloading' | 'complete' | 'error';
+  error: string | null;
+}

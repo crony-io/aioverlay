@@ -38,9 +38,7 @@
       const mbDown = (progress.bytesDownloaded / 1024 / 1024).toFixed(1);
       const mbTotal = (progress.totalBytes / 1024 / 1024).toFixed(1);
       const assetLabel =
-        progress.totalAssets > 1
-          ? ` (${progress.assetIndex + 1}/${progress.totalAssets})`
-          : '';
+        progress.totalAssets > 1 ? ` (${progress.assetIndex + 1}/${progress.totalAssets})` : '';
       return `Downloading${assetLabel}: ${mbDown} / ${mbTotal} MB`;
     }
     if (progress.phase === 'extracting') return 'Extracting files…';
@@ -130,8 +128,7 @@
       <div class="flex flex-col gap-0.5 min-w-0">
         <span class="text-xs text-emerald-300 font-medium">llama-server installed</span>
         <span class="text-[10px] text-white/40 truncate">
-          {variants.find((v) => v.id === installStatus.variantId)?.label ??
-            installStatus.variantId}
+          {variants.find((v) => v.id === installStatus.variantId)?.label ?? installStatus.variantId}
           · {installStatus.version}
         </span>
       </div>

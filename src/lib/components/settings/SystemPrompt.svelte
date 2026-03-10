@@ -13,5 +13,7 @@
     aria-label="System Prompt"
     class="w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 custom-scrollbar"
   ></textarea>
-  <span class="text-xs text-white/40">Instructions sent with every message to shape AI behavior</span>
+  <span class="text-xs text-white/40"
+    >Instructions sent with every message to shape AI behavior</span
+  >
 </div>

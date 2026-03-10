@@ -8,9 +8,7 @@ export type DownloadProgressHandler = (progress: DownloadProgress) => void;
  * Subscribe to llama-server download progress events from the Rust backend.
  * Returns an unlisten function to stop listening.
  */
-export async function onDownloadProgress(
-  handler: DownloadProgressHandler
-): Promise<UnlistenFn> {
+export async function onDownloadProgress(handler: DownloadProgressHandler): Promise<UnlistenFn> {
   return listen<DownloadProgress>('llama-download-progress', (event) => {
     handler(event.payload);
   });

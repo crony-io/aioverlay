@@ -7,6 +7,7 @@
   import GlobalShortcuts from '$lib/components/settings/GlobalShortcuts.svelte';
   import SystemPrompt from '$lib/components/settings/SystemPrompt.svelte';
   import LocalModelSetup from '$lib/components/settings/LocalModelSetup.svelte';
+  import ModelDownloader from '$lib/components/settings/ModelDownloader.svelte';
 
   let openAiKey = $state('');
   let anthropicKey = $state('');
@@ -102,6 +103,8 @@
   <SystemPrompt bind:value={systemPrompt} />
 
   <LocalModelSetup />
+
+  <ModelDownloader />
 
   <GlobalShortcuts bind:copyKey bind:screenshotKey bind:webSearchEnabled />
 </div>

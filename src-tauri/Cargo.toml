@@ -34,7 +34,7 @@ enigo = { version = "0.6", features = ["serde"] }
 xcap = "0.9"
 base64 = "0.22"
 image = "0.25"
-reqwest = { version = "0.13", features = ["stream"] }
+reqwest = { version = "0.13", features = ["stream", "json"] }
 futures-util = "0.3"
 zip = "2"
 flate2 = "1.1"

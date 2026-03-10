@@ -138,12 +138,15 @@
   <button
     class="flex flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors
       {isRecording
-        ? 'border-indigo-500/70 bg-indigo-500/10 text-white ring-1 ring-indigo-500/30'
-        : 'border-white/10 bg-black/20 text-white/70 hover:border-white/20 hover:text-white'}"
+      ? 'border-indigo-500/70 bg-indigo-500/10 text-white ring-1 ring-indigo-500/30'
+      : 'border-white/10 bg-black/20 text-white/70 hover:border-white/20 hover:text-white'}"
     onclick={startRecording}
     onkeydown={handleKeyDown}
     onkeyup={handleKeyUp}
-    onblur={() => { isRecording = false; pressedKeys = new Set(); }}
+    onblur={() => {
+      isRecording = false;
+      pressedKeys = new Set();
+    }}
     aria-label="Record shortcut for {label}"
   >
     <Keyboard class="h-3.5 w-3.5 shrink-0 {isRecording ? 'text-indigo-400' : 'text-white/40'}" />

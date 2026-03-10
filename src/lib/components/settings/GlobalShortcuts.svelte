@@ -13,7 +13,9 @@
   <div class="text-xs font-semibold text-white/50 uppercase tracking-wider">Global Shortcuts</div>
   <ShortcutRecorder label="Copy Text" bind:value={copyKey} />
   <ShortcutRecorder label="Screenshot" bind:value={screenshotKey} />
-  <span class="text-xs text-white/40">Click a shortcut, then press your desired key combination</span>
+  <span class="text-xs text-white/40"
+    >Click a shortcut, then press your desired key combination</span
+  >
 </div>
 
 <ToggleSwitch
