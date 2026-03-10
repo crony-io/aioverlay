@@ -20,6 +20,7 @@
   import ConversationList from '$lib/components/ConversationList.svelte';
   import Settings from '$lib/components/Settings.svelte';
   import ScreenshotOverlay from '$lib/components/ScreenshotOverlay.svelte';
+  import ChatStatusBar from '$lib/components/ChatStatusBar.svelte';
   import { Clock } from 'lucide-svelte';
 
   let activeTab = $state<'chat' | 'settings'>('chat');
@@ -31,6 +32,9 @@
 
   /** Pre-fill text for ChatInput (U3: captured text goes here instead of auto-sending) */
   let prefillText = $state('');
+
+  /** Base64 image data for screenshot attachment preview (U2) */
+  let attachedImage = $state('');
 
   // Screenshot state
   let screenshotData = $state<{ data: string; width: number; height: number } | null>(null);
@@ -164,11 +168,10 @@
     }
   }
 
-  /** Handle confirmed screenshot selection — pre-fill input with image so user can add prompt */
+  /** Handle confirmed screenshot selection — show preview thumbnail so user can add a prompt */
   function handleScreenshotConfirm(croppedBase64: string) {
     screenshotData = null;
-    const imageMarkdown = `![Screenshot](data:image/png;base64,${croppedBase64})`;
-    prefillText = `Analyze this screenshot:\n\n${imageMarkdown}`;
+    attachedImage = croppedBase64;
   }
 
   /** Cancel screenshot selection */
@@ -262,15 +265,18 @@
           {streamingContent}
           {errorMessage}
           onDismissError={dismissError}
+          onQuickPrompt={(text) => (prefillText = text)}
         />
 
         <div class="border-t pt-2 mt-auto" style="border-color: var(--border-subtle);">
+          <ChatStatusBar />
           <ChatInput
             onSubmit={handleMessageSubmit}
             disabled={isLoading}
             isStreaming={!!currentStreamHandle}
             onStop={handleStopStream}
             bind:prefillText
+            bind:attachedImage
           />
         </div>
       {:else}

@@ -8,7 +8,7 @@
   } from '$lib/services/local/llamaManager';
   import { onDownloadProgress } from '$lib/services/local/llamaDownloader';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-  import { Download, Trash2, CheckCircle, AlertCircle, Cpu, Loader } from 'lucide-svelte';
+  import { Download, Trash2, BadgeCheck, BadgeAlert, Cpu, Loader } from 'lucide-svelte';
 
   let variants = $state<LlamaVariant[]>([]);
   let installStatus = $state<InstallStatus>({
@@ -43,6 +43,7 @@
         progress.totalAssets > 1 ? ` (${progress.assetIndex + 1}/${progress.totalAssets})` : '';
       return `Downloading${assetLabel}: ${mbDown} / ${mbTotal} MB`;
     }
+    if (progress.phase === 'verifying') return 'Verifying integrity…';
     if (progress.phase === 'extracting') return 'Extracting files…';
     if (progress.phase === 'complete') return 'Installation complete!';
     if (progress.phase === 'error') return progress.error ?? 'Download failed';
@@ -137,7 +138,7 @@
     <div
       class="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2"
     >
-      <CheckCircle class="h-4 w-4 shrink-0 text-emerald-400" />
+      <BadgeCheck class="h-4 w-4 shrink-0 text-emerald-400" />
       <div class="flex flex-col gap-0.5 min-w-0">
         <span class="text-xs text-emerald-300 font-medium">llama-server installed</span>
         <span class="text-[10px] text-white/40 truncate">
@@ -163,7 +164,7 @@
     <div
       class="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2"
     >
-      <AlertCircle class="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+      <BadgeAlert class="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
       <span class="text-xs text-amber-300/80">
         llama-server is required for local inference. Select a variant below and download it.
       </span>

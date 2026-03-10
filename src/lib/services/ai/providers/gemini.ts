@@ -17,16 +17,30 @@ const GEMINI_MODELS: AIModelOption[] = [
     id: 'gemini-2.5-flash',
     label: 'Gemini 2.5 Flash',
     contextWindow: 1048576,
-    supportsVision: true
+    supportsVision: true,
+    supportsWebSearch: true
   },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', contextWindow: 1048576, supportsVision: true },
+  {
+    id: 'gemini-2.5-pro',
+    label: 'Gemini 2.5 Pro',
+    contextWindow: 1048576,
+    supportsVision: true,
+    supportsWebSearch: true
+  },
   {
     id: 'gemini-2.0-flash',
     label: 'Gemini 2.0 Flash',
     contextWindow: 1048576,
-    supportsVision: true
+    supportsVision: true,
+    supportsWebSearch: true
   },
-  { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', contextWindow: 2097152, supportsVision: true }
+  {
+    id: 'gemini-1.5-pro',
+    label: 'Gemini 1.5 Pro',
+    contextWindow: 2097152,
+    supportsVision: true,
+    supportsWebSearch: true
+  }
 ];
 
 export const geminiProvider: AIProvider = {
@@ -64,6 +78,10 @@ export const geminiProvider: AIProvider = {
     if (config.maxTokens !== undefined) generationConfig.maxOutputTokens = config.maxTokens;
     if (Object.keys(generationConfig).length > 0) {
       body.generationConfig = generationConfig;
+    }
+
+    if (config.webSearchEnabled) {
+      body.tools = [{ google_search: {} }];
     }
 
     const url = `${GEMINI_API_BASE}/${config.model}:streamGenerateContent?alt=sse&key=${config.apiKey}`;

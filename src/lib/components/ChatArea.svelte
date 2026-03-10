@@ -3,21 +3,29 @@
   import Markdown from '$lib/components/Markdown.svelte';
   import TypingIndicator from '$lib/components/TypingIndicator.svelte';
   import { formatRelativeTime } from '$lib/utils/formatTime';
-  import { MessageSquare, Command, Camera, X, AlertTriangle } from 'lucide-svelte';
+  import { MessageSquare, Command, Camera, X, TriangleAlert, Sparkles } from 'lucide-svelte';
 
   let {
     messages = [],
     isLoading = false,
     streamingContent = '',
     errorMessage = '',
-    onDismissError
+    onDismissError,
+    onQuickPrompt
   } = $props<{
     messages: ChatMessage[];
     isLoading?: boolean;
     streamingContent?: string;
     errorMessage?: string;
     onDismissError?: () => void;
+    onQuickPrompt?: (text: string) => void;
   }>();
+
+  const quickPrompts = [
+    { label: 'Explain this code', prompt: 'Explain this code in detail:' },
+    { label: 'Debug this error', prompt: 'Help me debug this error:' },
+    { label: 'Write a summary', prompt: 'Summarize the following:' }
+  ];
 
   let scrollContainer: HTMLDivElement | undefined = $state();
 
@@ -65,6 +73,20 @@
           >
         </div>
       </div>
+
+      {#if onQuickPrompt}
+        <div class="mt-4 flex flex-wrap justify-center gap-2">
+          {#each quickPrompts as qp (qp.label)}
+            <button
+              onclick={() => onQuickPrompt(qp.prompt)}
+              class="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] text-white/50 hover:text-white/80 hover:border-white/20 hover:bg-white/5 transition-colors"
+            >
+              <Sparkles class="h-3 w-3 text-indigo-400/40" />
+              {qp.label}
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
   {:else}
     {#each messages as msg (msg.id)}
@@ -85,7 +107,7 @@
         </div>
         <div class="mt-1 flex items-center gap-1.5 px-2">
           {#if msg.incomplete}
-            <AlertTriangle class="h-3 w-3 text-amber-400/70" />
+            <TriangleAlert class="h-3 w-3 text-amber-400/70" />
             <span class="text-[10px] text-amber-400/70">Incomplete</span>
             <span class="text-[10px]" style="color: var(--text-muted);">·</span>
           {/if}

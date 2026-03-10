@@ -23,8 +23,16 @@ const STORAGE_KEYS = {
 const DEFAULT_COPY_KEY = 'CommandOrControl+Shift+C';
 const DEFAULT_SCREENSHOT_KEY = 'CommandOrControl+Shift+S';
 
+/** Registration result returned by getRegistrationStatus */
+export interface ShortcutRegistrationStatus {
+  registered: boolean;
+  shortcuts: string[];
+  error: string | null;
+}
+
 let actionHandler: ShortcutActionHandler | null = null;
 let registeredShortcuts: string[] = [];
+let lastRegistrationError: string | null = null;
 
 /** Get the current shortcut bindings from localStorage */
 function getBindings(): { copyKey: string; screenshotKey: string } {
@@ -114,9 +122,11 @@ export async function registerShortcuts(): Promise<void> {
     if (unique.length > 0) {
       await register(unique, handleShortcut);
       registeredShortcuts = unique;
+      lastRegistrationError = null;
     }
   } catch (error) {
     console.error('Failed to register global shortcuts:', error);
+    lastRegistrationError = error instanceof Error ? error.message : String(error);
   }
 }
 
@@ -141,6 +151,15 @@ async function unregisterCurrentShortcuts(): Promise<void> {
 /** Set the action handler that receives shortcut events */
 export function onShortcutAction(handler: ShortcutActionHandler): void {
   actionHandler = handler;
+}
+
+/** Get the current shortcut registration status */
+export function getRegistrationStatus(): ShortcutRegistrationStatus {
+  return {
+    registered: registeredShortcuts.length > 0,
+    shortcuts: [...registeredShortcuts],
+    error: lastRegistrationError
+  };
 }
 
 /** Clean up all shortcuts (call on app teardown) */

@@ -1,9 +1,11 @@
 use crate::llama::platform::{
-    asset_download_url, install_dir, install_meta_path, server_binary_name, InstallMeta,
-    LLAMA_RELEASE_TAG,
+    InstallMeta, LLAMA_RELEASE_TAG, asset_download_url, install_dir, install_meta_path,
+    server_binary_name,
 };
 use futures_util::StreamExt;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::Emitter;
 
@@ -19,7 +21,7 @@ pub struct DownloadProgress {
     pub asset_name: String,
     pub bytes_downloaded: u64,
     pub total_bytes: u64,
-    /// One of: "downloading", "extracting", "complete", "error"
+    /// One of: "downloading", "verifying", "extracting", "complete", "error"
     pub phase: String,
     pub error: Option<String>,
 }
@@ -30,22 +32,18 @@ pub struct DownloadProgress {
 
 /// Extract a `.zip` archive into `dest`, returning the list of extracted paths.
 fn extract_zip(archive_path: &Path, dest: &Path) -> Result<Vec<PathBuf>, String> {
-    let file =
-        std::fs::File::open(archive_path).map_err(|e| format!("Failed to open zip: {e}"))?;
+    let file = std::fs::File::open(archive_path).map_err(|e| format!("Failed to open zip: {e}"))?;
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip archive: {e}"))?;
 
     let mut extracted = Vec::new();
 
     for i in 0..archive.len() {
-        let mut entry = archive
-            .by_index(i)
-            .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
+        let mut entry =
+            archive.by_index(i).map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
 
         let out_path = dest.join(
-            entry
-                .enclosed_name()
-                .ok_or_else(|| format!("Invalid zip entry name at index {i}"))?,
+            entry.enclosed_name().ok_or_else(|| format!("Invalid zip entry name at index {i}"))?,
         );
 
         if entry.is_dir() {
@@ -66,8 +64,7 @@ fn extract_zip(archive_path: &Path, dest: &Path) -> Result<Vec<PathBuf>, String>
             {
                 use std::os::unix::fs::PermissionsExt;
                 if let Some(mode) = entry.unix_mode() {
-                    std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(mode))
-                        .ok();
+                    std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(mode)).ok();
                 }
             }
 
@@ -80,27 +77,18 @@ fn extract_zip(archive_path: &Path, dest: &Path) -> Result<Vec<PathBuf>, String>
 
 /// Extract a `.tar.gz` archive into `dest`, returning the list of extracted paths.
 fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<Vec<PathBuf>, String> {
-    let file = std::fs::File::open(archive_path)
-        .map_err(|e| format!("Failed to open tar.gz: {e}"))?;
+    let file =
+        std::fs::File::open(archive_path).map_err(|e| format!("Failed to open tar.gz: {e}"))?;
     let decompressed = flate2::read::GzDecoder::new(file);
     let mut archive = tar::Archive::new(decompressed);
 
     let mut extracted = Vec::new();
 
-    for entry_result in archive
-        .entries()
-        .map_err(|e| format!("Failed to read tar entries: {e}"))?
-    {
+    for entry_result in archive.entries().map_err(|e| format!("Failed to read tar entries: {e}"))? {
         let mut entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
-        let out_path = dest.join(
-            entry
-                .path()
-                .map_err(|e| format!("Invalid tar entry path: {e}"))?,
-        );
+        let out_path = dest.join(entry.path().map_err(|e| format!("Invalid tar entry path: {e}"))?);
 
-        entry
-            .unpack(&out_path)
-            .map_err(|e| format!("Failed to unpack tar entry: {e}"))?;
+        entry.unpack(&out_path).map_err(|e| format!("Failed to unpack tar entry: {e}"))?;
 
         if out_path.is_file() {
             extracted.push(out_path);
@@ -112,10 +100,7 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<Vec<PathBuf>, Stri
 
 /// Extract an archive (auto-detects zip vs tar.gz by file name).
 fn extract_archive(archive_path: &Path, dest: &Path) -> Result<Vec<PathBuf>, String> {
-    let name = archive_path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy();
+    let name = archive_path.file_name().unwrap_or_default().to_string_lossy();
 
     if name.ends_with(".zip") {
         extract_zip(archive_path, dest)
@@ -142,6 +127,55 @@ fn find_binary(dir: &Path, binary_name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// Integrity verification helpers
+// ---------------------------------------------------------------------------
+
+/// Compute the SHA-256 hash of a file on disk.
+fn compute_file_sha256(path: &Path) -> Result<String, String> {
+    let mut file =
+        std::fs::File::open(path).map_err(|e| format!("Failed to open file for hashing: {e}"))?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)
+        .map_err(|e| format!("Failed to read file for hashing: {e}"))?;
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Try to download the SHA256SUMS file from the GitHub release.
+/// Returns a map of asset_name → expected_sha256_hex.
+async fn fetch_release_checksums(client: &reqwest::Client, tag: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+
+    // llama.cpp releases publish a SHA256SUMS file alongside the binaries
+    let url = asset_download_url(tag, "SHA256SUMS");
+    let response = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return map,
+    };
+
+    let body = match response.text().await {
+        Ok(t) => t,
+        Err(_) => return map,
+    };
+
+    // Format: "<hex_hash>  <filename>" or "<hex_hash> *<filename>"
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // Split on first whitespace
+        if let Some((hash, rest)) = line.split_once(char::is_whitespace) {
+            let name = rest.trim().trim_start_matches('*');
+            if !hash.is_empty() && !name.is_empty() {
+                map.insert(name.to_string(), hash.to_lowercase());
+            }
+        }
+    }
+
+    map
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +206,9 @@ pub async fn download_llama_server(
     let tag = LLAMA_RELEASE_TAG;
     let total_assets = asset_names.len();
     let client = reqwest::Client::new();
+
+    // Fetch expected checksums from the release (best-effort)
+    let expected_checksums = fetch_release_checksums(&client, tag).await;
 
     for (idx, asset_name) in asset_names.iter().enumerate() {
         let url = asset_download_url(tag, asset_name);
@@ -249,6 +286,57 @@ pub async fn download_llama_server(
             .map_err(|e| format!("Failed to flush file: {e}"))?;
         drop(file);
 
+        // --- Verify phase ---
+        app.emit(
+            PROGRESS_EVENT,
+            DownloadProgress {
+                asset_index: idx,
+                total_assets,
+                asset_name: asset_name.clone(),
+                bytes_downloaded: total_bytes,
+                total_bytes,
+                phase: "verifying".into(),
+                error: None,
+            },
+        )
+        .ok();
+
+        // Compute SHA-256 of the downloaded archive
+        let tmp_path_for_hash = tmp_path.clone();
+        let computed_hash =
+            tokio::task::spawn_blocking(move || compute_file_sha256(&tmp_path_for_hash))
+                .await
+                .map_err(|e| format!("Hash computation panicked: {e}"))?
+                .map_err(|e| format!("Failed to compute hash for {asset_name}: {e}"))?;
+
+        // Verify against expected checksum if available
+        if let Some(expected) = expected_checksums.get(asset_name.as_str()) {
+            if computed_hash != *expected {
+                let err_msg = format!(
+                    "Integrity check failed for {asset_name}: expected {expected}, got {computed_hash}"
+                );
+                app.emit(
+                    PROGRESS_EVENT,
+                    DownloadProgress {
+                        asset_index: idx,
+                        total_assets,
+                        asset_name: asset_name.clone(),
+                        bytes_downloaded: 0,
+                        total_bytes: 0,
+                        phase: "error".into(),
+                        error: Some(err_msg.clone()),
+                    },
+                )
+                .ok();
+                // Clean up the corrupted download
+                tokio::fs::remove_file(&tmp_path).await.ok();
+                return Err(err_msg);
+            }
+        } else {
+            // No checksum available — log warning but continue
+            eprintln!("Warning: No SHA256 checksum found for {asset_name}; skipping verification.");
+        }
+
         // --- Extract phase ---
         app.emit(
             PROGRESS_EVENT,
@@ -297,8 +385,8 @@ pub async fn download_llama_server(
         binary_path: binary_path.to_string_lossy().to_string(),
     };
 
-    let meta_json =
-        serde_json::to_string_pretty(&meta).map_err(|e| format!("Failed to serialize meta: {e}"))?;
+    let meta_json = serde_json::to_string_pretty(&meta)
+        .map_err(|e| format!("Failed to serialize meta: {e}"))?;
     let meta_path = install_meta_path(&app)?;
     std::fs::write(&meta_path, meta_json)
         .map_err(|e| format!("Failed to write install metadata: {e}"))?;

@@ -18,25 +18,29 @@ const ANTHROPIC_MODELS: AIModelOption[] = [
     id: 'claude-sonnet-4-20250514',
     label: 'Claude Sonnet 4',
     contextWindow: 200000,
-    supportsVision: true
+    supportsVision: true,
+    supportsWebSearch: true
   },
   {
     id: 'claude-3-5-sonnet-20241022',
     label: 'Claude 3.5 Sonnet',
     contextWindow: 200000,
-    supportsVision: true
+    supportsVision: true,
+    supportsWebSearch: true
   },
   {
     id: 'claude-3-5-haiku-20241022',
     label: 'Claude 3.5 Haiku',
     contextWindow: 200000,
-    supportsVision: true
+    supportsVision: true,
+    supportsWebSearch: true
   },
   {
     id: 'claude-opus-4-20250514',
     label: 'Claude Opus 4',
     contextWindow: 200000,
-    supportsVision: true
+    supportsVision: true,
+    supportsWebSearch: true
   }
 ];
 
@@ -80,6 +84,10 @@ export const anthropicProvider: AIProvider = {
     }
 
     if (config.temperature !== undefined) body.temperature = config.temperature;
+
+    if (config.webSearchEnabled) {
+      body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+    }
 
     const result = (async (): Promise<AIStreamResult> => {
       const response = await fetch(ANTHROPIC_API_URL, {

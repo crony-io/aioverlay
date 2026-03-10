@@ -13,13 +13,32 @@ import { parseOpenAISSEChunk, sanitizeApiError } from '$lib/services/ai/utils/ss
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
 const OPENAI_MODELS: AIModelOption[] = [
-  { id: 'gpt-4o', label: 'GPT-4o', contextWindow: 128000, supportsVision: true },
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', contextWindow: 128000, supportsVision: true },
+  {
+    id: 'gpt-4o',
+    label: 'GPT-4o',
+    contextWindow: 128000,
+    supportsVision: true,
+    supportsWebSearch: true,
+    searchModelId: 'gpt-4o-search-preview'
+  },
+  {
+    id: 'gpt-4o-mini',
+    label: 'GPT-4o Mini',
+    contextWindow: 128000,
+    supportsVision: true,
+    supportsWebSearch: true,
+    searchModelId: 'gpt-4o-mini-search-preview'
+  },
   { id: 'gpt-4.1', label: 'GPT-4.1', contextWindow: 1047576, supportsVision: true },
   { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', contextWindow: 1047576, supportsVision: true },
   { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', contextWindow: 1047576, supportsVision: true },
   { id: 'o4-mini', label: 'o4-mini', contextWindow: 200000, supportsVision: true }
 ];
+
+/** Map base model IDs to their Chat Completions search variants */
+const SEARCH_MODEL_MAP: Record<string, string> = Object.fromEntries(
+  OPENAI_MODELS.filter((m) => m.searchModelId).map((m) => [m.id, m.searchModelId!])
+);
 
 export const openaiProvider: AIProvider = {
   id: 'openai',
@@ -33,8 +52,12 @@ export const openaiProvider: AIProvider = {
   ): { result: Promise<AIStreamResult>; handle: AIStreamHandle } {
     const controller = new AbortController();
 
+    const effectiveModel = config.webSearchEnabled
+      ? (SEARCH_MODEL_MAP[config.model] ?? config.model)
+      : config.model;
+
     const body: Record<string, unknown> = {
-      model: config.model,
+      model: effectiveModel,
       stream: true,
       messages: [
         ...(config.systemPrompt ? [{ role: 'system', content: config.systemPrompt }] : []),

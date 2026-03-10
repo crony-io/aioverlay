@@ -7,6 +7,9 @@ export interface AIModelOption {
   label: string;
   contextWindow: number;
   supportsVision: boolean;
+  supportsWebSearch?: boolean;
+  /** Alternate model ID used when web search is enabled (e.g. OpenAI search variants) */
+  searchModelId?: string;
 }
 
 /** Configuration needed to make an AI request */
@@ -16,6 +19,7 @@ export interface AIRequestConfig {
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
+  webSearchEnabled?: boolean;
 }
 
 /** A text-only content part */

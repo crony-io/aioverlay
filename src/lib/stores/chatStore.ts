@@ -54,7 +54,8 @@ const VALID_PROVIDERS: AIProviderID[] = ['openai', 'anthropic', 'gemini', 'local
 const SETTINGS_KEYS = {
   ACTIVE_PROVIDER: 'activeProvider',
   ACTIVE_MODEL: 'activeModel',
-  SYSTEM_PROMPT: 'systemPrompt'
+  SYSTEM_PROMPT: 'systemPrompt',
+  WEB_SEARCH: 'webSearchEnabled'
 } as const;
 
 export function getActiveProvider(): AIProviderID {
@@ -71,6 +72,10 @@ export function getActiveModel(): string {
 
 export function getSystemPrompt(): string {
   return localStorage.getItem(SETTINGS_KEYS.SYSTEM_PROMPT) || '';
+}
+
+export function isWebSearchEnabled(): boolean {
+  return localStorage.getItem(SETTINGS_KEYS.WEB_SEARCH) === 'true';
 }
 
 /**
@@ -129,7 +134,8 @@ export async function sendMessageAndStream(opts: {
         apiKey,
         model,
         systemPrompt: systemPrompt || undefined,
-        maxTokens: 4096
+        maxTokens: 4096,
+        webSearchEnabled: isWebSearchEnabled()
       },
       (chunk) => {
         streamedContent += chunk;

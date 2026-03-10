@@ -22,7 +22,7 @@
     Search,
     Download,
     Trash2,
-    CheckCircle,
+    BadgeCheck,
     ChevronDown,
     ChevronUp,
     Loader,
@@ -235,7 +235,7 @@
             title={isActive ? 'Active model' : 'Click to activate'}
           >
             {#if isActive}
-              <CheckCircle class="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+              <BadgeCheck class="h-3.5 w-3.5 shrink-0 text-indigo-400" />
             {:else}
               <HardDrive class="h-3.5 w-3.5 shrink-0 text-white/20" />
             {/if}
@@ -340,7 +340,7 @@
                         {formatFileSize(file.size)}
                       </span>
                       {#if isAlreadyDownloaded}
-                        <CheckCircle class="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                        <BadgeCheck class="h-3.5 w-3.5 shrink-0 text-emerald-400" />
                       {:else if isThisDownloading}
                         <Loader class="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-400" />
                       {:else}

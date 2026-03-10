@@ -2,12 +2,14 @@
   import { saveApiKey, getApiKey, removeApiKey } from '$lib/storage';
   import type { AIProviderID } from '$lib/services/ai/types';
   import { registerShortcuts } from '$lib/services/shortcuts/shortcutManager';
+  import SettingsSection from '$lib/components/settings/SettingsSection.svelte';
   import ProviderSelection from '$lib/components/settings/ProviderSelection.svelte';
   import ApiKeysList from '$lib/components/settings/ApiKeysList.svelte';
   import GlobalShortcuts from '$lib/components/settings/GlobalShortcuts.svelte';
   import SystemPrompt from '$lib/components/settings/SystemPrompt.svelte';
   import LocalModelSetup from '$lib/components/settings/LocalModelSetup.svelte';
   import ModelDownloader from '$lib/components/settings/ModelDownloader.svelte';
+  import ServerControls from '$lib/components/settings/ServerControls.svelte';
 
   let openAiKey = $state('');
   let anthropicKey = $state('');
@@ -18,6 +20,7 @@
   let activeProvider = $state<AIProviderID>('openai');
   let activeModel = $state('');
   let systemPrompt = $state('');
+  let webSearchEnabled = $state(false);
 
   let savedStatus = $state('');
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -38,6 +41,7 @@
       activeProvider = (localStorage.getItem('activeProvider') as AIProviderID) || 'openai';
       activeModel = localStorage.getItem('activeModel') || '';
       systemPrompt = localStorage.getItem('systemPrompt') || '';
+      webSearchEnabled = localStorage.getItem('webSearchEnabled') === 'true';
       prevCopyKey = copyKey;
       prevScreenshotKey = screenshotKey;
       isLoaded = true;
@@ -70,6 +74,7 @@
       localStorage.setItem('activeProvider', activeProvider);
       localStorage.setItem('activeModel', activeModel);
       localStorage.setItem('systemPrompt', systemPrompt);
+      localStorage.setItem('webSearchEnabled', String(webSearchEnabled));
       // Only re-register shortcuts when bindings actually changed
       if (copyKey !== prevCopyKey || screenshotKey !== prevScreenshotKey) {
         await registerShortcuts();
@@ -101,23 +106,34 @@
     void activeProvider;
     void activeModel;
     void systemPrompt;
+    void webSearchEnabled;
 
     scheduleSave();
   });
 </script>
 
-<div class="flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar" style="max-height: 380px;">
-  <ProviderSelection bind:activeProvider bind:activeModel />
+<div class="flex flex-col gap-1 overflow-y-auto pr-2 custom-scrollbar" style="max-height: 380px;">
+  <SettingsSection title="AI Provider & Model" defaultOpen={true}>
+    <ProviderSelection bind:activeProvider bind:activeModel bind:webSearchEnabled />
+  </SettingsSection>
 
-  <ApiKeysList bind:openAiKey bind:anthropicKey bind:geminiKey />
+  <SettingsSection title="API Keys" defaultOpen={true}>
+    <ApiKeysList bind:openAiKey bind:anthropicKey bind:geminiKey />
+  </SettingsSection>
 
-  <SystemPrompt bind:value={systemPrompt} />
+  <SettingsSection title="System Prompt" defaultOpen={false}>
+    <SystemPrompt bind:value={systemPrompt} />
+  </SettingsSection>
 
-  <LocalModelSetup />
+  <SettingsSection title="Local Inference" defaultOpen={false}>
+    <LocalModelSetup />
+    <ModelDownloader />
+    <ServerControls />
+  </SettingsSection>
 
-  <ModelDownloader />
-
-  <GlobalShortcuts bind:copyKey bind:screenshotKey />
+  <SettingsSection title="Shortcuts" defaultOpen={false}>
+    <GlobalShortcuts bind:copyKey bind:screenshotKey />
+  </SettingsSection>
 </div>
 
 <!-- Auto-save status indicator -->

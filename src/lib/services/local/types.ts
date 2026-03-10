@@ -32,8 +32,8 @@ export interface DownloadProgress {
   assetName: string;
   bytesDownloaded: number;
   totalBytes: number;
-  /** One of: "downloading", "extracting", "complete", "error" */
-  phase: 'downloading' | 'extracting' | 'complete' | 'error';
+  /** One of: "downloading", "verifying", "extracting", "complete", "error" */
+  phase: 'downloading' | 'verifying' | 'extracting' | 'complete' | 'error';
   error: string | null;
 }
 
