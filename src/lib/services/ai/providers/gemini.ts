@@ -7,6 +7,7 @@ import type {
   AIStreamResult,
   AIStreamHandle
 } from '$lib/services/ai/types';
+import { toGeminiMessage, getTextContent } from '$lib/services/ai/messageUtils';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -27,12 +28,6 @@ const GEMINI_MODELS: AIModelOption[] = [
   { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', contextWindow: 2097152, supportsVision: true }
 ];
 
-/** Map our role names to Gemini's expected role names */
-function mapRole(role: string): string {
-  if (role === 'assistant') return 'model';
-  return 'user';
-}
-
 export const geminiProvider: AIProvider = {
   id: 'gemini',
   label: 'Google Gemini',
@@ -48,15 +43,15 @@ export const geminiProvider: AIProvider = {
     const systemMessages = messages.filter((m) => m.role === 'system');
     const chatMessages = messages.filter((m) => m.role !== 'system');
 
-    const systemText = [config.systemPrompt, ...systemMessages.map((m) => m.content)]
+    const systemText = [
+      config.systemPrompt,
+      ...systemMessages.map((m) => getTextContent(m.content))
+    ]
       .filter(Boolean)
       .join('\n\n');
 
     const body: Record<string, unknown> = {
-      contents: chatMessages.map((m) => ({
-        role: mapRole(m.role),
-        parts: [{ text: m.content }]
-      }))
+      contents: chatMessages.map(toGeminiMessage)
     };
 
     if (systemText) {

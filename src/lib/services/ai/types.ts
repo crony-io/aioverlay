@@ -18,10 +18,28 @@ export interface AIRequestConfig {
   maxTokens?: number;
 }
 
-/** A message in the format expected by AI providers */
+/** A text-only content part */
+export interface AITextContent {
+  type: 'text';
+  text: string;
+}
+
+/** A base64-encoded image content part */
+export interface AIImageContent {
+  type: 'image';
+  /** Base64-encoded image data (without data URI prefix) */
+  data: string;
+  /** MIME type, e.g. 'image/png' */
+  mediaType: string;
+}
+
+/** A single content part in a multimodal message */
+export type AIContentPart = AITextContent | AIImageContent;
+
+/** A message in the format expected by AI providers (supports text-only or multimodal) */
 export interface AIMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | AIContentPart[];
 }
 
 /** Callback invoked on each streamed text chunk */

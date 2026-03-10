@@ -14,6 +14,10 @@
     "fs:default",
     "os:default",
     "process:default",
-    "stronghold:default"
+    "stronghold:default",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-ignore-cursor-events"
   ]
 }

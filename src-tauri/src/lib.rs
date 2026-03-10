@@ -1,8 +1,6 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+mod capture;
+mod input;
+mod llama;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,7 +22,19 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![
+            input::simulate_copy,
+            capture::take_screenshot,
+            llama::platform::detect_gpu,
+            llama::platform::get_available_variants,
+            llama::platform::get_install_status,
+            llama::download::download_llama_server,
+            llama::download::delete_llama_installation,
+            llama::process::start_llama_server,
+            llama::process::stop_llama_server,
+            llama::process::is_llama_server_running,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

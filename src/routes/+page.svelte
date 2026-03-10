@@ -19,6 +19,7 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import ConversationList from '$lib/components/ConversationList.svelte';
   import Settings from '$lib/components/Settings.svelte';
+  import ScreenshotOverlay from '$lib/components/ScreenshotOverlay.svelte';
   import { Clock } from 'lucide-svelte';
 
   let activeTab = $state<'chat' | 'settings'>('chat');
@@ -27,6 +28,9 @@
   let errorMessage = $state('');
   let streamingContent = $state('');
   let currentStreamHandle = $state<AIStreamHandle | null>(null);
+
+  // Screenshot state
+  let screenshotData = $state<{ data: string; width: number; height: number } | null>(null);
 
   // Conversation state
   let conversations = $state<ConversationMeta[]>([]);
@@ -46,9 +50,12 @@
       if (action === 'captureText' && payload) {
         handleMessageSubmit(payload);
       }
-      if (action === 'captureScreen') {
-        // TODO: Screen capture flow (Phase 3)
-        console.warn('Screen capture triggered — not yet implemented');
+      if (action === 'captureScreen' && payload) {
+        try {
+          screenshotData = JSON.parse(payload);
+        } catch {
+          console.error('Failed to parse screenshot data');
+        }
       }
     });
 
@@ -136,7 +143,27 @@
       currentConversation = createConversation();
     }
   }
+
+  /** Handle confirmed screenshot selection — send image as a message */
+  function handleScreenshotConfirm(croppedBase64: string) {
+    screenshotData = null;
+    const imageMarkdown = `![Screenshot](data:image/png;base64,${croppedBase64})`;
+    handleMessageSubmit(`Analyze this screenshot:\n\n${imageMarkdown}`);
+  }
+
+  /** Cancel screenshot selection */
+  function handleScreenshotCancel() {
+    screenshotData = null;
+  }
 </script>
+
+{#if screenshotData}
+  <ScreenshotOverlay
+    {screenshotData}
+    onConfirm={handleScreenshotConfirm}
+    onCancel={handleScreenshotCancel}
+  />
+{/if}
 
 <div class="flex h-full w-full items-center justify-center p-8">
   <!-- Glassmorphic Container -->

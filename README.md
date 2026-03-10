@@ -1,6 +1,6 @@
 # Ai Overlay
 
-Ai Overlay is an open-source, local-first desktop application that provides a AI assistant overlaid directly on your screen. Seamlessly capture screenshots or text and send them to your favorite AI models (Cloud-based or Local) using global keyboard shortcuts.
+Ai Overlay is an open-source, local-first desktop Tauri application that provides a AI assistant overlaid directly on your screen. Seamlessly capture screenshots or text and send them to your favorite AI models (Cloud-based or Local) using global keyboard shortcuts.
 
 ## 🌟 Key Features
 
@@ -10,7 +10,7 @@ Ai Overlay is an open-source, local-first desktop application that provides a AI
   - `Ctrl + Shift + S`: Freeze the screen to capture specific regions for vision analysis.
 - **Multi-Provider Support**:
   - **Cloud**: OpenAI, Anthropic, Gemini, and more providers soon.
-  - **Local**: `llama.cpp` sidecar integration for running GGUF models completely offline.
+  - **Local**: `llama.cpp` runtime download with GPU variant auto-detection for running GGUF models completely offline.
 - **Modular Architecture**: Unified AI interface for seamless switching between local and cloud models without code duplication.
 - **Privacy First**: Securely store API keys using `Tauri Stronghold` (encrypted on-disk storage).
 - **Click-Through Mode**: "Pin" the assistant to keep it visible while you work, with mouse ignore capability.
@@ -19,7 +19,7 @@ Ai Overlay is an open-source, local-first desktop application that provides a AI
 
 - **Backend**: [Tauri v2](https://v2.tauri.app/) (Rust)
 - **Frontend**: [SvelteKit](https://kit.svelte.dev/) + [TailwindCSS](https://tailwindcss.com/)
-- **Local Inference**: [llama.cpp](https://github.com/ggerganov/llama.cpp) (packaged as a Native Sidecar)
+- **Local Inference**: [llama.cpp](https://github.com/ggml-org/llama.cpp) (runtime download with GPU variant auto-detection)
 - **Security**: `tauri-plugin-stronghold` for encrypted credential management.
 - **Automation**: `enigo` for key simulation and `xcap` for screen capture.
 

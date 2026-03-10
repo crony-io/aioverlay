@@ -6,6 +6,7 @@
   import ApiKeysList from '$lib/components/settings/ApiKeysList.svelte';
   import GlobalShortcuts from '$lib/components/settings/GlobalShortcuts.svelte';
   import SystemPrompt from '$lib/components/settings/SystemPrompt.svelte';
+  import LocalModelSetup from '$lib/components/settings/LocalModelSetup.svelte';
 
   let openAiKey = $state('');
   let anthropicKey = $state('');
@@ -99,6 +100,8 @@
   <ApiKeysList bind:openAiKey bind:anthropicKey bind:geminiKey />
 
   <SystemPrompt bind:value={systemPrompt} />
+
+  <LocalModelSetup />
 
   <GlobalShortcuts bind:copyKey bind:screenshotKey bind:webSearchEnabled />
 </div>

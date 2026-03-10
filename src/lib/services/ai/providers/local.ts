@@ -9,18 +9,19 @@ import type {
 } from '$lib/services/ai/types';
 import { toOpenAIMessage } from '$lib/services/ai/messageUtils';
 
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+/** Default local llama-server endpoint (OpenAI-compatible) */
+const LOCAL_API_URL = 'http://127.0.0.1:8080/v1/chat/completions';
 
-const OPENAI_MODELS: AIModelOption[] = [
-  { id: 'gpt-4o', label: 'GPT-4o', contextWindow: 128000, supportsVision: true },
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', contextWindow: 128000, supportsVision: true },
-  { id: 'gpt-4.1', label: 'GPT-4.1', contextWindow: 1047576, supportsVision: true },
-  { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', contextWindow: 1047576, supportsVision: true },
-  { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', contextWindow: 1047576, supportsVision: true },
-  { id: 'o4-mini', label: 'o4-mini', contextWindow: 200000, supportsVision: true }
+const LOCAL_MODELS: AIModelOption[] = [
+  {
+    id: 'local-default',
+    label: 'Local Model (llama.cpp)',
+    contextWindow: 8192,
+    supportsVision: false
+  }
 ];
 
-/** Parse an SSE line from OpenAI's streaming response */
+/** Parse an SSE line (same format as OpenAI) */
 function parseSSEChunk(line: string): string | null {
   if (!line.startsWith('data: ')) return null;
 
@@ -35,10 +36,10 @@ function parseSSEChunk(line: string): string | null {
   }
 }
 
-export const openaiProvider: AIProvider = {
-  id: 'openai',
-  label: 'OpenAI',
-  models: OPENAI_MODELS,
+export const localProvider: AIProvider = {
+  id: 'local',
+  label: 'Local (llama.cpp)',
+  models: LOCAL_MODELS,
 
   streamChat(
     messages: AIMessage[],
@@ -48,7 +49,7 @@ export const openaiProvider: AIProvider = {
     const controller = new AbortController();
 
     const body: Record<string, unknown> = {
-      model: config.model,
+      model: config.model || 'local-default',
       stream: true,
       messages: [
         ...(config.systemPrompt ? [{ role: 'system', content: config.systemPrompt }] : []),
@@ -60,23 +61,20 @@ export const openaiProvider: AIProvider = {
     if (config.maxTokens !== undefined) body.max_tokens = config.maxTokens;
 
     const result = (async (): Promise<AIStreamResult> => {
-      const response = await fetch(OPENAI_API_URL, {
+      const response = await fetch(LOCAL_API_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.apiKey}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: controller.signal
       });
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`OpenAI API error (${response.status}): ${errorBody}`);
+        throw new Error(`Local server error (${response.status}): ${errorBody}`);
       }
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body from OpenAI');
+      if (!reader) throw new Error('No response body from local server');
 
       const decoder = new TextDecoder();
       let fullContent = '';
@@ -101,7 +99,7 @@ export const openaiProvider: AIProvider = {
 
       return {
         content: fullContent,
-        model: config.model,
+        model: config.model || 'local-default',
         finishReason: 'stop'
       };
     })();

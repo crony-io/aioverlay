@@ -1,5 +1,10 @@
 import type { Conversation, ChatMessage } from '$lib/types';
-import type { AIProviderID, AIStreamHandle } from '$lib/services/ai/types';
+import type {
+  AIProviderID,
+  AIStreamHandle,
+  AIMessage,
+  AIContentPart
+} from '$lib/services/ai/types';
 import {
   loadConversationList,
   loadConversation,
@@ -10,6 +15,44 @@ import {
 } from '$lib/chatHistory';
 import { getProvider } from '$lib/services/ai/registry';
 import { getApiKey } from '$lib/storage';
+
+/** Regex to match inline base64 images in markdown: ![alt](data:mime;base64,DATA) */
+const BASE64_IMAGE_REGEX = /!\[[^\]]*\]\(data:([^;]+);base64,([^)]+)\)/g;
+
+/**
+ * Convert a ChatMessage to an AIMessage, extracting inline base64 images
+ * into multimodal content parts when present.
+ */
+function toAIMessage(msg: { role: string; content: string }): AIMessage {
+  const matches = [...msg.content.matchAll(BASE64_IMAGE_REGEX)];
+
+  if (matches.length === 0) {
+    return { role: msg.role as AIMessage['role'], content: msg.content };
+  }
+
+  const parts: AIContentPart[] = [];
+  let lastIndex = 0;
+
+  for (const match of matches) {
+    const textBefore = msg.content.slice(lastIndex, match.index).trim();
+    if (textBefore) {
+      parts.push({ type: 'text', text: textBefore });
+    }
+    parts.push({
+      type: 'image',
+      mediaType: match[1],
+      data: match[2]
+    });
+    lastIndex = (match.index ?? 0) + match[0].length;
+  }
+
+  const textAfter = msg.content.slice(lastIndex).trim();
+  if (textAfter) {
+    parts.push({ type: 'text', text: textAfter });
+  }
+
+  return { role: msg.role as AIMessage['role'], content: parts };
+}
 
 /** Settings keys stored in localStorage */
 const SETTINGS_KEYS = {
@@ -73,10 +116,7 @@ export async function sendMessageAndStream(opts: {
   const provider = getProvider(providerId);
   const model = modelId || provider.models[0]?.id || '';
 
-  const aiMessages = conversation.messages.map((m) => ({
-    role: m.role,
-    content: m.content
-  }));
+  const aiMessages = conversation.messages.map(toAIMessage);
 
   const systemPrompt = getSystemPrompt();
 

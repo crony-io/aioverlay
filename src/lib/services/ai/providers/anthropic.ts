@@ -7,6 +7,7 @@ import type {
   AIStreamResult,
   AIStreamHandle
 } from '$lib/services/ai/types';
+import { toAnthropicMessage } from '$lib/services/ai/messageUtils';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_VERSION = '2023-06-01';
@@ -70,7 +71,7 @@ export const anthropicProvider: AIProvider = {
       model: config.model,
       stream: true,
       max_tokens: config.maxTokens ?? 4096,
-      messages: filteredMessages.map((m) => ({ role: m.role, content: m.content }))
+      messages: filteredMessages.map(toAnthropicMessage)
     };
 
     if (config.systemPrompt) {

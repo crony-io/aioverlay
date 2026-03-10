@@ -2,13 +2,14 @@ import type { AIProvider, AIProviderID, AIModelOption } from '$lib/services/ai/t
 import { openaiProvider } from '$lib/services/ai/providers/openai';
 import { anthropicProvider } from '$lib/services/ai/providers/anthropic';
 import { geminiProvider } from '$lib/services/ai/providers/gemini';
+import { localProvider } from '$lib/services/ai/providers/local';
 
 /** Registry of all available AI providers keyed by ID */
 const providers: Record<AIProviderID, AIProvider> = {
   openai: openaiProvider,
   anthropic: anthropicProvider,
   gemini: geminiProvider,
-  local: openaiProvider // Placeholder: local llama.cpp uses OpenAI-compatible API
+  local: localProvider
 };
 
 /** Get a provider by ID */

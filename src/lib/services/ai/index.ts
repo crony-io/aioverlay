@@ -3,6 +3,9 @@ export type {
   AIModelOption,
   AIRequestConfig,
   AIMessage,
+  AITextContent,
+  AIImageContent,
+  AIContentPart,
   StreamChunkCallback,
   AIStreamResult,
   AIStreamHandle,
@@ -15,3 +18,11 @@ export {
   getModelsForProvider,
   getDefaultModel
 } from '$lib/services/ai/registry';
+
+export {
+  toOpenAIMessage,
+  toAnthropicMessage,
+  toGeminiMessage,
+  getTextContent,
+  hasImageContent
+} from '$lib/services/ai/messageUtils';

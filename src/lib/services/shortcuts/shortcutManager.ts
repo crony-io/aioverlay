@@ -6,6 +6,7 @@ import {
 } from '@tauri-apps/plugin-global-shortcut';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 
 /** Shortcut action identifiers */
 export type ShortcutAction = 'captureText' | 'captureScreen';
@@ -53,9 +54,18 @@ async function handleShortcut(event: ShortcutEvent): Promise<void> {
   }
 }
 
-/** Text capture: read clipboard content and send to handler */
+/**
+ * Text capture: hide overlay, simulate Ctrl+C via enigo,
+ * read clipboard, then show overlay with the captured text.
+ */
 async function handleCaptureText(): Promise<void> {
   try {
+    const win = getCurrentWindow();
+    await win.hide();
+
+    // Simulate Ctrl+C via Rust enigo command
+    await invoke('simulate_copy');
+
     const text = await readText();
     await showOverlay();
     actionHandler?.('captureText', text || '');
@@ -66,10 +76,24 @@ async function handleCaptureText(): Promise<void> {
   }
 }
 
-/** Screen capture: trigger the screenshot flow */
+/** Screen capture: hide overlay, take screenshot via xcap, then show overlay */
 async function handleCaptureScreen(): Promise<void> {
-  await showOverlay();
-  actionHandler?.('captureScreen');
+  try {
+    const win = getCurrentWindow();
+    await win.hide();
+
+    // Small delay so the overlay is fully hidden before capture
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const result = await invoke<{ data: string; width: number; height: number }>('take_screenshot');
+
+    await showOverlay();
+    actionHandler?.('captureScreen', JSON.stringify(result));
+  } catch (error) {
+    console.error('Failed to capture screen:', error);
+    await showOverlay();
+    actionHandler?.('captureScreen');
+  }
 }
 
 /**
