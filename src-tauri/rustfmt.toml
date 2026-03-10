@@ -1,0 +1,7 @@
+max_width = 100
+use_small_heuristics = "Max"
+newline_style = "Windows"
+indent_style = "Block"
+edition = "2021"
+merge_derives = true
+group_imports = "StdExternalCrate"
