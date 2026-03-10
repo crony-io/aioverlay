@@ -11,10 +11,6 @@ import {
 import { getProvider } from '$lib/services/ai/registry';
 import { getApiKey } from '$lib/storage';
 
-/** Reactive chat state using module-level Svelte 5 runes via .svelte.ts */
-// Note: This file should be renamed to .svelte.ts to use runes, but we use
-// a plain class-based approach that works with standard TS imports.
-
 /** Settings keys stored in localStorage */
 const SETTINGS_KEYS = {
   ACTIVE_PROVIDER: 'activeProvider',
@@ -67,9 +63,7 @@ export async function sendMessageAndStream(opts: {
   const providerId = getActiveProvider();
   const modelId = getActiveModel();
 
-  const apiKey = providerId !== 'local'
-    ? await getApiKey(providerId)
-    : 'local';
+  const apiKey = providerId !== 'local' ? await getApiKey(providerId) : 'local';
 
   if (!apiKey) {
     onError(`No API key configured for ${providerId}. Please add one in Settings.`);

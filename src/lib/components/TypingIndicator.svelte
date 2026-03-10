@@ -18,7 +18,9 @@
   }
 
   @keyframes typingBounce {
-    0%, 60%, 100% {
+    0%,
+    60%,
+    100% {
       opacity: 0.3;
       transform: translateY(0);
     }

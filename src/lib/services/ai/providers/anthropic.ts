@@ -12,10 +12,30 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_API_VERSION = '2023-06-01';
 
 const ANTHROPIC_MODELS: AIModelOption[] = [
-  { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4', contextWindow: 200000, supportsVision: true },
-  { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', contextWindow: 200000, supportsVision: true },
-  { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', contextWindow: 200000, supportsVision: true },
-  { id: 'claude-opus-4-20250514', label: 'Claude Opus 4', contextWindow: 200000, supportsVision: true }
+  {
+    id: 'claude-sonnet-4-20250514',
+    label: 'Claude Sonnet 4',
+    contextWindow: 200000,
+    supportsVision: true
+  },
+  {
+    id: 'claude-3-5-sonnet-20241022',
+    label: 'Claude 3.5 Sonnet',
+    contextWindow: 200000,
+    supportsVision: true
+  },
+  {
+    id: 'claude-3-5-haiku-20241022',
+    label: 'Claude 3.5 Haiku',
+    contextWindow: 200000,
+    supportsVision: true
+  },
+  {
+    id: 'claude-opus-4-20250514',
+    label: 'Claude Opus 4',
+    contextWindow: 200000,
+    supportsVision: true
+  }
 ];
 
 /** Parse an SSE event from Anthropic's streaming response */
@@ -100,14 +120,18 @@ export const anthropicProvider: AIProvider = {
           const eventType = (event as Record<string, unknown>).type as string;
 
           if (eventType === 'content_block_delta') {
-            const delta = (event as Record<string, unknown>).delta as Record<string, unknown> | undefined;
+            const delta = (event as Record<string, unknown>).delta as
+              | Record<string, unknown>
+              | undefined;
             if (delta?.type === 'text_delta') {
               const text = delta.text as string;
               fullContent += text;
               onChunk(text);
             }
           } else if (eventType === 'message_delta') {
-            const delta = (event as Record<string, unknown>).delta as Record<string, unknown> | undefined;
+            const delta = (event as Record<string, unknown>).delta as
+              | Record<string, unknown>
+              | undefined;
             finishReason = (delta?.stop_reason as string) ?? null;
           }
         }

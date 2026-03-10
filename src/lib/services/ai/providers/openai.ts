@@ -50,9 +50,7 @@ export const openaiProvider: AIProvider = {
       model: config.model,
       stream: true,
       messages: [
-        ...(config.systemPrompt
-          ? [{ role: 'system', content: config.systemPrompt }]
-          : []),
+        ...(config.systemPrompt ? [{ role: 'system', content: config.systemPrompt }] : []),
         ...messages.map((m) => ({ role: m.role, content: m.content }))
       ]
     };

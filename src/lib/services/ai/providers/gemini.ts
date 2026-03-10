@@ -11,9 +11,19 @@ import type {
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 const GEMINI_MODELS: AIModelOption[] = [
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', contextWindow: 1048576, supportsVision: true },
+  {
+    id: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    contextWindow: 1048576,
+    supportsVision: true
+  },
   { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', contextWindow: 1048576, supportsVision: true },
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', contextWindow: 1048576, supportsVision: true },
+  {
+    id: 'gemini-2.0-flash',
+    label: 'Gemini 2.0 Flash',
+    contextWindow: 1048576,
+    supportsVision: true
+  },
   { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', contextWindow: 2097152, supportsVision: true }
 ];
 
@@ -38,10 +48,7 @@ export const geminiProvider: AIProvider = {
     const systemMessages = messages.filter((m) => m.role === 'system');
     const chatMessages = messages.filter((m) => m.role !== 'system');
 
-    const systemText = [
-      config.systemPrompt,
-      ...systemMessages.map((m) => m.content)
-    ]
+    const systemText = [config.systemPrompt, ...systemMessages.map((m) => m.content)]
       .filter(Boolean)
       .join('\n\n');
 

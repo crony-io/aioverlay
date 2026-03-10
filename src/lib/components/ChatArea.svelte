@@ -4,7 +4,12 @@
   import TypingIndicator from '$lib/components/TypingIndicator.svelte';
   import { MessageSquare } from 'lucide-svelte';
 
-  let { messages = [], isLoading = false, streamingContent = '', errorMessage = '' } = $props<{
+  let {
+    messages = [],
+    isLoading = false,
+    streamingContent = '',
+    errorMessage = ''
+  } = $props<{
     messages: ChatMessage[];
     isLoading?: boolean;
     streamingContent?: string;
@@ -48,7 +53,10 @@
   class="flex flex-1 flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar"
 >
   {#if messages.length === 0 && !isLoading}
-    <div class="flex h-full flex-col items-center justify-center text-center" style="color: var(--text-muted);">
+    <div
+      class="flex h-full flex-col items-center justify-center text-center"
+      style="color: var(--text-muted);"
+    >
       <div class="mb-3 rounded-full p-4" style="background: var(--surface-overlay);">
         <MessageSquare class="h-8 w-8 text-indigo-400/50" />
       </div>
@@ -62,7 +70,9 @@
           class="max-w-[85%] rounded-2xl px-4 py-3 {msg.role === 'user'
             ? 'bg-indigo-500/80 text-white shadow-md'
             : 'border text-white/90 shadow-sm'}"
-          style={msg.role === 'assistant' ? 'background: var(--surface-raised); border-color: var(--border-subtle);' : ''}
+          style={msg.role === 'assistant'
+            ? 'background: var(--surface-raised); border-color: var(--border-subtle);'
+            : ''}
         >
           {#if msg.role === 'assistant'}
             <Markdown content={msg.content} />
@@ -87,7 +97,10 @@
       </div>
     {:else if isLoading}
       <div class="flex flex-col items-start">
-        <div class="rounded-2xl border shadow-sm" style="background: var(--surface-raised); border-color: var(--border-subtle);">
+        <div
+          class="rounded-2xl border shadow-sm"
+          style="background: var(--surface-raised); border-color: var(--border-subtle);"
+        >
           <TypingIndicator />
         </div>
       </div>
@@ -95,7 +108,9 @@
 
     {#if errorMessage}
       <div class="flex justify-center">
-        <div class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-300">
+        <div
+          class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-300"
+        >
           {errorMessage}
         </div>
       </div>

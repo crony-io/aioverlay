@@ -1,5 +1,6 @@
 <script lang="ts">
   import { saveApiKey, getApiKey } from '$lib/storage';
+  import type { AIProviderID } from '$lib/services/ai/types';
   import ProviderSelection from '$lib/components/settings/ProviderSelection.svelte';
   import ApiKeysList from '$lib/components/settings/ApiKeysList.svelte';
   import GlobalShortcuts from '$lib/components/settings/GlobalShortcuts.svelte';
@@ -10,7 +11,7 @@
 
   let screenshotKey = $state('CommandOrControl+Shift+S');
   let copyKey = $state('CommandOrControl+Shift+C');
-  let activeProvider = $state('openai');
+  let activeProvider = $state<AIProviderID>('openai');
   let activeModel = $state('');
   let webSearchEnabled = $state(false);
 
@@ -26,7 +27,7 @@
 
       screenshotKey = localStorage.getItem('screenshotKey') || 'CommandOrControl+Shift+S';
       copyKey = localStorage.getItem('copyKey') || 'CommandOrControl+Shift+C';
-      activeProvider = localStorage.getItem('activeProvider') || 'openai';
+      activeProvider = (localStorage.getItem('activeProvider') as AIProviderID) || 'openai';
       activeModel = localStorage.getItem('activeModel') || '';
       webSearchEnabled = localStorage.getItem('webSearchEnabled') === 'true';
       isLoaded = true;
@@ -84,21 +85,11 @@
 </script>
 
 <div class="flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar" style="max-height: 380px;">
+  <ProviderSelection bind:activeProvider bind:activeModel />
 
-  <ProviderSelection bind:activeProvider={activeProvider} bind:activeModel={activeModel} />
+  <ApiKeysList bind:openAiKey bind:anthropicKey bind:geminiKey />
 
-  <ApiKeysList
-    bind:openAiKey={openAiKey}
-    bind:anthropicKey={anthropicKey}
-    bind:geminiKey={geminiKey}
-  />
-
-  <GlobalShortcuts
-    bind:copyKey={copyKey}
-    bind:screenshotKey={screenshotKey}
-    bind:webSearchEnabled={webSearchEnabled}
-  />
-
+  <GlobalShortcuts bind:copyKey bind:screenshotKey bind:webSearchEnabled />
 </div>
 
 <!-- Auto-save status indicator -->

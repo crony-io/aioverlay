@@ -48,18 +48,27 @@
 
   <!-- Conversation List -->
   {#if conversations.length > 0}
-    <div class="mt-2 flex flex-col gap-0.5 overflow-y-auto custom-scrollbar" style="max-height: 200px;">
+    <div
+      class="mt-2 flex flex-col gap-0.5 overflow-y-auto custom-scrollbar"
+      style="max-height: 200px;"
+    >
       {#each conversations as conv (conv.id)}
         <div
           class="group flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors"
-          style="background: {conv.id === activeConversationId ? 'var(--surface-overlay)' : 'transparent'};"
+          style="background: {conv.id === activeConversationId
+            ? 'var(--surface-overlay)'
+            : 'transparent'};"
           role="button"
           tabindex="0"
           onclick={() => onSelect(conv.id)}
           onkeydown={(e) => e.key === 'Enter' && onSelect(conv.id)}
         >
           <div class="flex-1 min-w-0">
-            <p class="truncate text-sm {conv.id === activeConversationId ? 'text-white' : 'text-white/60'}">
+            <p
+              class="truncate text-sm {conv.id === activeConversationId
+                ? 'text-white'
+                : 'text-white/60'}"
+            >
               {conv.title}
             </p>
             <p class="text-[10px]" style="color: var(--text-muted);">
@@ -69,7 +78,10 @@
 
           <!-- Delete button (visible on hover) -->
           <button
-            onclick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
+            onclick={(e) => {
+              e.stopPropagation();
+              onDelete(conv.id);
+            }}
             class="ml-2 shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 text-white/40 hover:text-red-400 transition-opacity"
             aria-label="Delete conversation"
             title="Delete"

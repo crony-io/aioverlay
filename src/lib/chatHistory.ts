@@ -1,4 +1,11 @@
-import { mkdir, readTextFile, writeTextFile, remove, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
+import {
+  mkdir,
+  readTextFile,
+  writeTextFile,
+  remove,
+  exists,
+  BaseDirectory
+} from '@tauri-apps/plugin-fs';
 import type { Conversation, ConversationMeta, ChatMessage } from '$lib/types';
 
 const CONVERSATIONS_DIR = 'conversations';
@@ -30,7 +37,9 @@ export async function loadConversationList(): Promise<ConversationMeta[]> {
 /** Save the conversation index */
 async function saveIndex(index: ConversationMeta[]): Promise<void> {
   await ensureDir();
-  await writeTextFile(INDEX_FILE, JSON.stringify(index, null, 2), { baseDir: BaseDirectory.AppData });
+  await writeTextFile(INDEX_FILE, JSON.stringify(index, null, 2), {
+    baseDir: BaseDirectory.AppData
+  });
 }
 
 /** Load a full conversation by ID */
@@ -55,7 +64,9 @@ export async function saveConversation(conversation: Conversation): Promise<void
   const filePath = `${CONVERSATIONS_DIR}/${conversation.id}.json`;
   conversation.updatedAt = Date.now();
 
-  await writeTextFile(filePath, JSON.stringify(conversation, null, 2), { baseDir: BaseDirectory.AppData });
+  await writeTextFile(filePath, JSON.stringify(conversation, null, 2), {
+    baseDir: BaseDirectory.AppData
+  });
 
   // Update the index
   const index = await loadConversationList();

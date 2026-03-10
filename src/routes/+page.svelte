@@ -129,16 +129,23 @@
     <Titlebar />
 
     <!-- Tabs -->
-    <div class="flex items-center gap-4 border-b mb-4 px-2" style="border-color: var(--border-subtle);">
+    <div
+      class="flex items-center gap-4 border-b mb-4 px-2"
+      style="border-color: var(--border-subtle);"
+    >
       <button
-        class="pb-2 font-medium transition-colors {activeTab === 'chat' ? 'border-b-2 border-indigo-500 text-white' : 'text-white/50 hover:text-white/80'}"
-        onclick={() => activeTab = 'chat'}
+        class="pb-2 font-medium transition-colors {activeTab === 'chat'
+          ? 'border-b-2 border-indigo-500 text-white'
+          : 'text-white/50 hover:text-white/80'}"
+        onclick={() => (activeTab = 'chat')}
       >
         Chat
       </button>
       <button
-        class="pb-2 font-medium transition-colors {activeTab === 'settings' ? 'border-b-2 border-indigo-500 text-white' : 'text-white/50 hover:text-white/80'}"
-        onclick={() => activeTab = 'settings'}
+        class="pb-2 font-medium transition-colors {activeTab === 'settings'
+          ? 'border-b-2 border-indigo-500 text-white'
+          : 'text-white/50 hover:text-white/80'}"
+        onclick={() => (activeTab = 'settings')}
       >
         Settings
       </button>
@@ -149,8 +156,10 @@
       <!-- History toggle (only on chat tab) -->
       {#if activeTab === 'chat'}
         <button
-          class="rounded-lg p-1.5 transition-colors {showHistory ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}"
-          onclick={() => showHistory = !showHistory}
+          class="rounded-lg p-1.5 transition-colors {showHistory
+            ? 'bg-white/10 text-white'
+            : 'text-white/40 hover:text-white/70'}"
+          onclick={() => (showHistory = !showHistory)}
           aria-label="Toggle History"
           title="Chat History"
         >
@@ -160,7 +169,10 @@
     </div>
 
     <!-- Content Area -->
-    <div class="flex-1 flex flex-col overflow-hidden rounded-xl border p-4 pb-2 pt-0" style="background: var(--surface-raised); border-color: var(--border-subtle);">
+    <div
+      class="flex-1 flex flex-col overflow-hidden rounded-xl border p-4 pb-2 pt-0"
+      style="background: var(--surface-raised); border-color: var(--border-subtle);"
+    >
       {#if activeTab === 'chat'}
         <!-- History panel (collapsible) -->
         {#if showHistory}
@@ -178,7 +190,12 @@
         <ChatArea {messages} {isLoading} {streamingContent} {errorMessage} />
 
         <div class="border-t pt-2 mt-auto" style="border-color: var(--border-subtle);">
-          <ChatInput onSubmit={handleMessageSubmit} disabled={isLoading} isStreaming={!!currentStreamHandle} onStop={handleStopStream} />
+          <ChatInput
+            onSubmit={handleMessageSubmit}
+            disabled={isLoading}
+            isStreaming={!!currentStreamHandle}
+            onStop={handleStopStream}
+          />
         </div>
       {:else}
         <Settings />

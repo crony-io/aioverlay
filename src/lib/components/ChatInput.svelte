@@ -1,7 +1,12 @@
 <script lang="ts">
   import { Send, Square } from 'lucide-svelte';
 
-  let { onSubmit, disabled = false, isStreaming = false, onStop } = $props<{
+  let {
+    onSubmit,
+    disabled = false,
+    isStreaming = false,
+    onStop
+  } = $props<{
     onSubmit: (text: string) => void;
     disabled?: boolean;
     isStreaming?: boolean;

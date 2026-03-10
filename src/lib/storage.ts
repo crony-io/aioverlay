@@ -9,17 +9,17 @@ let storeInstance: Store | null = null;
 
 async function initStorage() {
   if (storeInstance) return storeInstance;
-  
+
   try {
     strongholdInstance = await Stronghold.load(VAULT_PATH, VAULT_PASS);
-    
+
     let client: Client;
     try {
       client = await strongholdInstance.loadClient(STORE_NAME);
     } catch {
       client = await strongholdInstance.createClient(STORE_NAME);
     }
-    
+
     storeInstance = client.getStore();
     return storeInstance;
   } catch (error) {

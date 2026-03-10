@@ -1,10 +1,6 @@
 import { marked, type RendererObject } from 'marked';
 import DOMPurify from 'dompurify';
-import {
-  createHighlighter,
-  type Highlighter,
-  type BundledLanguage
-} from 'shiki';
+import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
 
 /** Supported languages for syntax highlighting */
 const SUPPORTED_LANGUAGES: BundledLanguage[] = [
@@ -72,10 +68,7 @@ async function highlightCode(code: string, lang: string): Promise<string> {
     });
   } catch {
     // Fallback: wrap in pre/code without highlighting
-    const escaped = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return `<pre class="shiki"><code>${escaped}</code></pre>`;
   }
 }
@@ -89,7 +82,11 @@ function createRenderer(): RendererObject {
       const id = `shiki-${Math.random().toString(36).slice(2, 10)}`;
       // Store code block info for async processing
       pendingBlocks.set(id, { code: text, lang: language });
-      return `<div id="${id}" class="shiki-placeholder"><pre><code>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre></div>`;
+      const escapedCode = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<div id="${id}" class="code-block-wrapper relative group">
+        <button class="copy-btn absolute top-2 right-2 rounded-md px-2 py-1 text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Copy code">Copy</button>
+        <pre><code>${escapedCode}</code></pre>
+      </div>`;
     }
   };
 }
@@ -97,10 +94,16 @@ function createRenderer(): RendererObject {
 /** Map of placeholder IDs to their code info for async highlighting */
 const pendingBlocks = new Map<string, { code: string; lang: string }>();
 
+/** DOMPurify config: allow button elements, inline styles (for Shiki), and data-* attributes */
+const SANITIZE_CONFIG = {
+  ADD_TAGS: ['button'],
+  ADD_ATTR: ['class', 'id', 'aria-label', 'data-bound', 'style']
+};
+
 /**
  * Render markdown content to sanitized HTML.
- * Returns HTML immediately with plain code blocks, then
- * calls onHighlighted when syntax highlighting is ready.
+ * Returns HTML immediately with plain code blocks,
+ * syntax highlighting is applied async via applyHighlighting.
  */
 export function renderMarkdown(content: string): string {
   if (!content) return '';
@@ -110,7 +113,7 @@ export function renderMarkdown(content: string): string {
   try {
     marked.use({ renderer: createRenderer() });
     const rawHtml = marked.parse(content, { async: false }) as string;
-    return DOMPurify.sanitize(rawHtml);
+    return String(DOMPurify.sanitize(rawHtml, SANITIZE_CONFIG));
   } catch (error) {
     console.error('Error rendering markdown:', error);
     return '<p class="text-red-400">Error rendering content</p>';
@@ -122,6 +125,9 @@ export function renderMarkdown(content: string): string {
  * Replaces placeholder elements with Shiki-highlighted code.
  */
 export async function applyHighlighting(container: HTMLElement): Promise<void> {
+  // Wire up copy buttons on all code-block-wrappers
+  attachCopyHandlers(container);
+
   if (pendingBlocks.size === 0) return;
 
   const entries = [...pendingBlocks.entries()];
@@ -133,8 +139,46 @@ export async function applyHighlighting(container: HTMLElement): Promise<void> {
       if (!el) return;
 
       const highlighted = await highlightCode(code, lang);
-      el.innerHTML = DOMPurify.sanitize(highlighted);
+      // Preserve the wrapper + copy button, replace only the code content
+      const copyBtn = el.querySelector('.copy-btn');
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = DOMPurify.sanitize(highlighted);
+
+      // Clear old pre/code, keep the button
+      el.querySelectorAll('pre').forEach((pre) => pre.remove());
+      el.querySelectorAll('.shiki-placeholder').forEach((ph) => ph.remove());
+
+      // Append highlighted content
+      while (wrapper.firstChild) {
+        el.appendChild(wrapper.firstChild);
+      }
+
+      // Re-attach button at the top
+      if (copyBtn) el.prepend(copyBtn);
+
       el.classList.remove('shiki-placeholder');
     })
   );
+
+  // Re-attach copy handlers after highlighting replaces DOM
+  attachCopyHandlers(container);
+}
+
+/** Attach click handlers to all copy buttons in a container */
+function attachCopyHandlers(container: HTMLElement): void {
+  container.querySelectorAll<HTMLElement>('.code-block-wrapper').forEach((wrapper) => {
+    const btn = wrapper.querySelector<HTMLButtonElement>('.copy-btn');
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = 'true';
+
+    btn.addEventListener('click', () => {
+      const codeEl = wrapper.querySelector('code');
+      if (!codeEl) return;
+
+      navigator.clipboard.writeText(codeEl.textContent ?? '').then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => (btn.textContent = 'Copy'), 1500);
+      });
+    });
+  });
 }

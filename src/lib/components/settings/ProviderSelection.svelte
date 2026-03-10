@@ -21,7 +21,11 @@
 <div class="flex flex-col gap-3">
   <div class="flex flex-col gap-2">
     <div class="text-xs font-semibold text-white/50 uppercase tracking-wider">AI Provider</div>
-    <select bind:value={activeProvider} aria-label="Select AI Provider" class="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50">
+    <select
+      bind:value={activeProvider}
+      aria-label="Select AI Provider"
+      class="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+    >
       <option value="openai">OpenAI</option>
       <option value="anthropic">Anthropic</option>
       <option value="gemini">Google Gemini</option>
@@ -31,7 +35,11 @@
 
   <div class="flex flex-col gap-2">
     <div class="text-xs font-semibold text-white/50 uppercase tracking-wider">Model</div>
-    <select bind:value={activeModel} aria-label="Select Model" class="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50">
+    <select
+      bind:value={activeModel}
+      aria-label="Select Model"
+      class="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+    >
       {#each availableModels as model (model.id)}
         <option value={model.id}>{model.label}</option>
       {/each}
