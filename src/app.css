@@ -1,28 +1,21 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 html,
 body {
-    margin: 0;
-    padding: 0;
-    width: 100vw;
-    height: 100vh;
-    background-color: transparent !important;
-    /* Essential for Tauri transparent window */
-    overflow: hidden;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-}
-
-body {
-    /* This enables dragging the window around from anywhere that isn't an input/button */
-    /* We will override this on specific interactive elements */
-    --tauri-drag-region: drag;
-}
-
-/* Base interactive elements should not drag the window */
-button,
-input,
-textarea,
-select,
-a {
-    --tauri-drag-region: no-drag;
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: transparent !important;
+  /* Essential for Tauri transparent window */
+  overflow: hidden;
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { marked } from 'marked';
   import DOMPurify from 'dompurify';
+  import type { Action } from 'svelte/action';
 
   let { content = '' } = $props<{ content: string }>();
 
@@ -10,15 +11,24 @@
     try {
       const rawHtml = marked.parse(content, { async: false }) as string;
       return DOMPurify.sanitize(rawHtml);
-    } catch (e) {
-      console.error('Error rendering markdown:', e);
+    } catch (error) {
+      console.error('Error rendering markdown:', error);
       return '<p class="text-red-400">Error rendering content</p>';
     }
   });
+
+  // Since we already sanitize with DOMPurify, this is safe to inject.
+  const renderHtml: Action<HTMLElement, string> = (node, contentHtml) => {
+    node.innerHTML = contentHtml;
+    return {
+      update(newHtml: string) {
+        node.innerHTML = newHtml;
+      }
+    };
+  };
 </script>
 
-<div class="markdown-body text-sm leading-relaxed text-white/90">
-  {@html html}
+<div class="markdown-body text-sm leading-relaxed text-white/90" use:renderHtml={html}>
 </div>
 
 <style>

@@ -1,7 +1,0 @@
-.svelte-kit
-build
-node_modules
-src-tauri/target
-dist
-package-lock.json
-public

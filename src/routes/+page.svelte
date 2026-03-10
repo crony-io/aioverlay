@@ -6,6 +6,7 @@
 
   // Demo state for the chat
   let messages = $state<ChatMessage[]>([]);
+  let activeTab = $state<'chat' | 'settings'>('chat');
 
   function handleMessageSubmit(text: string) {
     if (!text) return;
@@ -33,20 +34,36 @@
 <div class="flex h-full w-full items-center justify-center p-8">
   <!-- Glassmorphic Container -->
   <div 
-    class="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-black/40 p-6 text-white shadow-2xl backdrop-blur-xl transition-all"
-    data-tauri-drag-region
+    class="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-black/90 p-6 text-white shadow-2xl backdrop-blur-xl transition-all"
   >
     <Titlebar />
 
+    <!-- Tabs -->
+    <div class="flex gap-4 border-b border-white/10 mb-4 px-2">
+      <button 
+        class="pb-2 font-medium transition-colors {activeTab === 'chat' ? 'border-b-2 border-indigo-500 text-white' : 'text-white/50 hover:text-white/80'}"
+        onclick={() => activeTab = 'chat'}
+      >
+        Chat
+      </button>
+      <button 
+        class="pb-2 font-medium transition-colors {activeTab === 'settings' ? 'border-b-2 border-indigo-500 text-white' : 'text-white/50 hover:text-white/80'}"
+        onclick={() => activeTab = 'settings'}
+      >
+        Settings
+      </button>
+    </div>
+
     <!-- Content Area -->
     <div class="flex-1 rounded-xl bg-black/20 p-4 border border-white/5 flex flex-col pt-0 pb-2">
-      <ChatArea {messages} />
-      
-      <div class="border-t border-white/10 pt-2 mt-auto">
-        <ChatInput onSubmit={handleMessageSubmit} />
-      </div>
-      
-      <Settings />
+      {#if activeTab === 'chat'}
+        <ChatArea {messages} />
+        <div class="border-t border-white/10 pt-2 mt-auto">
+          <ChatInput onSubmit={handleMessageSubmit} />
+        </div>
+      {:else}
+        <Settings />
+      {/if}
     </div>
   </div>
 </div>

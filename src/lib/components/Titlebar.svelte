@@ -12,15 +12,17 @@
     await getCurrentWindow().close();
   }
 
+  // Programmatic drag is often more reliable than data-tauri-drag-region when layered elements are involved
   async function startDrag(e: MouseEvent) {
+    // Only drag on left click
     if (e.button !== 0) return;
     await getCurrentWindow().startDragging();
   }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="mb-4 flex items-center justify-between cursor-move" role="presentation" onmousedown={startDrag}>
-  <div class="flex items-center gap-3">
+<div class="mb-4 flex items-center justify-between cursor-move" onmousedown={startDrag}>
+  <div class="flex items-center gap-3 pointer-events-none">
     <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-inner">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -28,13 +30,14 @@
     </div>
     <div>
       <h1 class="text-xl font-bold tracking-tight text-white/90">Ai Overlay</h1>
-      <p class="text-xs text-white/50">v0.1.0 • Transparent Mode</p>
+      <p class="text-xs text-white/50">v0.1.0</p>
     </div>
   </div>
   
-  <div class="flex items-center gap-2">
+  <!-- Stop propagation to prevent drag when clicking buttons -->
+  <div class="flex items-center gap-2" onmousedown={(e) => e.stopPropagation()}>
     <button 
-      class="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white transition-colors {isPinned ? 'bg-white/20 text-white' : ''}" 
+      class="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white transition-colors {isPinned ? 'bg-white/20 text-white' : ''} z-10 relative" 
       aria-label="Pin Window"
       title="Pin Window"
       onclick={togglePin}
@@ -44,7 +47,7 @@
       </svg>
     </button>
     <button 
-      class="rounded-lg p-2 text-white/60 hover:bg-red-500/80 hover:text-white transition-colors" 
+      class="rounded-lg p-2 text-white/60 hover:bg-red-500/80 hover:text-white transition-colors z-10 relative" 
       aria-label="Close"
       title="Close App"
       onclick={closeApp}

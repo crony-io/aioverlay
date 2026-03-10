@@ -41,7 +41,7 @@ export async function getApiKey(provider: string): Promise<string | null> {
     const data = await store.get(provider);
     if (!data) return null;
     return new TextDecoder().decode(data);
-  } catch (e) {
+  } catch {
     return null;
   }
 }
