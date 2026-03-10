@@ -3,21 +3,25 @@
   import {
     loadConversationList,
     loadConversation,
-    saveConversation,
     deleteConversation,
     createConversation,
-    generateTitle
-  } from '$lib/chatHistory';
+    sendMessageAndStream
+  } from '$lib/stores/chatStore';
+  import type { AIStreamHandle } from '$lib/services/ai/types';
 
   import Titlebar from '$lib/components/Titlebar.svelte';
   import ChatArea from '$lib/components/ChatArea.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import ConversationList from '$lib/components/ConversationList.svelte';
   import Settings from '$lib/components/Settings.svelte';
+  import { Clock } from 'lucide-svelte';
 
   let activeTab = $state<'chat' | 'settings'>('chat');
   let isLoading = $state(false);
   let showHistory = $state(false);
+  let errorMessage = $state('');
+  let streamingContent = $state('');
+  let currentStreamHandle = $state<AIStreamHandle | null>(null);
 
   // Conversation state
   let conversations = $state<ConversationMeta[]>([]);
@@ -33,59 +37,67 @@
     });
   });
 
+  /** Auto-dismiss error after 5 seconds */
+  $effect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => (errorMessage = ''), 5000);
+      return () => clearTimeout(timer);
+    }
+  });
+
   /** Handle sending a new message */
   async function handleMessageSubmit(text: string) {
     if (!text || isLoading) return;
 
-    // Add user message
-    currentConversation.messages = [
-      ...currentConversation.messages,
-      {
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: text,
-        timestamp: Date.now()
-      }
-    ];
-
-    // Auto-generate title from first message
-    if (currentConversation.messages.length === 1) {
-      currentConversation.title = generateTitle(currentConversation.messages);
-    }
-
-    // Save after user message
-    await saveConversation(currentConversation);
-    conversations = await loadConversationList();
-
-    // Simulate AI response
     isLoading = true;
-    setTimeout(async () => {
-      currentConversation.messages = [
-        ...currentConversation.messages,
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `I received your message: "${text}"\n\nThis is a **test** response from the local state. The actual AI backend is not connected yet.\n\nHere is a code block:\n\`\`\`javascript\nconsole.log('Hello from Ai Overlay!');\n\`\`\``,
-          timestamp: Date.now()
-        }
-      ];
+    errorMessage = '';
+    streamingContent = '';
 
-      isLoading = false;
+    const handle = await sendMessageAndStream({
+      conversation: currentConversation,
+      userText: text,
+      onConversationUpdate: (conv) => {
+        currentConversation = { ...conv };
+        loadConversationList().then((list) => (conversations = list));
+      },
+      onStreamChunk: (fullContent) => {
+        streamingContent = fullContent;
+      },
+      onComplete: (conv) => {
+        currentConversation = { ...conv };
+        streamingContent = '';
+        isLoading = false;
+        currentStreamHandle = null;
+        loadConversationList().then((list) => (conversations = list));
+      },
+      onError: (error) => {
+        errorMessage = error;
+        streamingContent = '';
+        isLoading = false;
+        currentStreamHandle = null;
+      }
+    });
 
-      // Save after AI response
-      await saveConversation(currentConversation);
-      conversations = await loadConversationList();
-    }, 1200);
+    currentStreamHandle = handle;
+  }
+
+  /** Stop the current AI stream */
+  function handleStopStream() {
+    currentStreamHandle?.abort();
+    currentStreamHandle = null;
+    isLoading = false;
   }
 
   /** Start a new conversation */
   function handleNewChat() {
+    if (currentStreamHandle) handleStopStream();
     currentConversation = createConversation();
     showHistory = false;
   }
 
   /** Select an existing conversation */
   async function handleSelectConversation(id: string) {
+    if (currentStreamHandle) handleStopStream();
     const conv = await loadConversation(id);
     if (conv) {
       currentConversation = conv;
@@ -98,7 +110,6 @@
     await deleteConversation(id);
     conversations = await loadConversationList();
 
-    // If we deleted the active conversation, start a new one
     if (id === currentConversation.id) {
       currentConversation = createConversation();
     }
@@ -143,9 +154,7 @@
           aria-label="Toggle History"
           title="Chat History"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+          <Clock class="h-4 w-4" />
         </button>
       {/if}
     </div>
@@ -166,10 +175,10 @@
           </div>
         {/if}
 
-        <ChatArea {messages} {isLoading} />
+        <ChatArea {messages} {isLoading} {streamingContent} {errorMessage} />
 
         <div class="border-t pt-2 mt-auto" style="border-color: var(--border-subtle);">
-          <ChatInput onSubmit={handleMessageSubmit} disabled={isLoading} />
+          <ChatInput onSubmit={handleMessageSubmit} disabled={isLoading} isStreaming={!!currentStreamHandle} onStop={handleStopStream} />
         </div>
       {:else}
         <Settings />

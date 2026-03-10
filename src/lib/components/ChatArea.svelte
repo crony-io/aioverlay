@@ -2,10 +2,13 @@
   import type { ChatMessage } from '$lib/types';
   import Markdown from '$lib/components/Markdown.svelte';
   import TypingIndicator from '$lib/components/TypingIndicator.svelte';
+  import { MessageSquare } from 'lucide-svelte';
 
-  let { messages = [], isLoading = false } = $props<{
+  let { messages = [], isLoading = false, streamingContent = '', errorMessage = '' } = $props<{
     messages: ChatMessage[];
     isLoading?: boolean;
+    streamingContent?: string;
+    errorMessage?: string;
   }>();
 
   let scrollContainer: HTMLDivElement | undefined = $state();
@@ -15,6 +18,7 @@
     // Track dependencies
     void messages.length;
     void isLoading;
+    void streamingContent;
 
     if (scrollContainer) {
       requestAnimationFrame(() => {
@@ -46,9 +50,7 @@
   {#if messages.length === 0 && !isLoading}
     <div class="flex h-full flex-col items-center justify-center text-center" style="color: var(--text-muted);">
       <div class="mb-3 rounded-full p-4" style="background: var(--surface-overlay);">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-indigo-400/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-        </svg>
+        <MessageSquare class="h-8 w-8 text-indigo-400/50" />
       </div>
       <p class="text-sm font-medium">How can I help you today?</p>
       <p class="mt-1 text-xs">Press Ctrl+Shift+S to capture screen context</p>
@@ -74,10 +76,27 @@
       </div>
     {/each}
 
-    {#if isLoading}
+    {#if streamingContent}
+      <div class="flex flex-col items-start">
+        <div
+          class="max-w-[85%] rounded-2xl border px-4 py-3 text-white/90 shadow-sm"
+          style="background: var(--surface-raised); border-color: var(--border-subtle);"
+        >
+          <Markdown content={streamingContent} />
+        </div>
+      </div>
+    {:else if isLoading}
       <div class="flex flex-col items-start">
         <div class="rounded-2xl border shadow-sm" style="background: var(--surface-raised); border-color: var(--border-subtle);">
           <TypingIndicator />
+        </div>
+      </div>
+    {/if}
+
+    {#if errorMessage}
+      <div class="flex justify-center">
+        <div class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-300">
+          {errorMessage}
         </div>
       </div>
     {/if}

@@ -11,6 +11,7 @@
   let screenshotKey = $state('CommandOrControl+Shift+S');
   let copyKey = $state('CommandOrControl+Shift+C');
   let activeProvider = $state('openai');
+  let activeModel = $state('');
   let webSearchEnabled = $state(false);
 
   let savedStatus = $state('');
@@ -26,6 +27,7 @@
       screenshotKey = localStorage.getItem('screenshotKey') || 'CommandOrControl+Shift+S';
       copyKey = localStorage.getItem('copyKey') || 'CommandOrControl+Shift+C';
       activeProvider = localStorage.getItem('activeProvider') || 'openai';
+      activeModel = localStorage.getItem('activeModel') || '';
       webSearchEnabled = localStorage.getItem('webSearchEnabled') === 'true';
       isLoaded = true;
     } catch (e) {
@@ -49,6 +51,7 @@
       localStorage.setItem('screenshotKey', screenshotKey);
       localStorage.setItem('copyKey', copyKey);
       localStorage.setItem('activeProvider', activeProvider);
+      localStorage.setItem('activeModel', activeModel);
       localStorage.setItem('webSearchEnabled', webSearchEnabled.toString());
 
       savedStatus = 'Saved ✓';
@@ -73,6 +76,7 @@
     void screenshotKey;
     void copyKey;
     void activeProvider;
+    void activeModel;
     void webSearchEnabled;
 
     scheduleSave();
@@ -81,7 +85,7 @@
 
 <div class="flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar" style="max-height: 380px;">
 
-  <ProviderSelection bind:activeProvider={activeProvider} />
+  <ProviderSelection bind:activeProvider={activeProvider} bind:activeModel={activeModel} />
 
   <ApiKeysList
     bind:openAiKey={openAiKey}

@@ -29,6 +29,7 @@
     "dompurify": "^3.3.2",
     "lucide-svelte": "^0.577.0",
     "marked": "^17.0.4",
+    "shiki": "^4.0.2",
     "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
