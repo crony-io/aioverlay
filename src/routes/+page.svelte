@@ -29,6 +29,9 @@
   let streamingContent = $state('');
   let currentStreamHandle = $state<AIStreamHandle | null>(null);
 
+  /** Pre-fill text for ChatInput (U3: captured text goes here instead of auto-sending) */
+  let prefillText = $state('');
+
   // Screenshot state
   let screenshotData = $state<{ data: string; width: number; height: number } | null>(null);
 
@@ -48,7 +51,7 @@
     onShortcutAction((action, payload) => {
       activeTab = 'chat';
       if (action === 'captureText' && payload) {
-        handleMessageSubmit(payload);
+        prefillText = payload;
       }
       if (action === 'captureScreen' && payload) {
         try {
@@ -61,18 +64,35 @@
 
     registerShortcuts();
 
+    /** U10: App-level keyboard shortcuts */
+    function handleKeyboard(e: KeyboardEvent) {
+      const isCtrl = e.ctrlKey || e.metaKey;
+      if (!isCtrl) return;
+
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        handleNewChat();
+      } else if (e.key === ',' || e.key === '<') {
+        e.preventDefault();
+        activeTab = activeTab === 'settings' ? 'chat' : 'settings';
+      } else if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        if (activeTab === 'chat') showHistory = !showHistory;
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyboard);
+
     return () => {
       cleanupShortcuts();
+      window.removeEventListener('keydown', handleKeyboard);
     };
   });
 
-  /** Auto-dismiss error after 5 seconds */
-  $effect(() => {
-    if (errorMessage) {
-      const timer = setTimeout(() => (errorMessage = ''), 5000);
-      return () => clearTimeout(timer);
-    }
-  });
+  /** U11: Dismiss error manually */
+  function dismissError() {
+    errorMessage = '';
+  }
 
   /** Handle sending a new message */
   async function handleMessageSubmit(text: string) {
@@ -144,11 +164,11 @@
     }
   }
 
-  /** Handle confirmed screenshot selection — send image as a message */
+  /** Handle confirmed screenshot selection — pre-fill input with image so user can add prompt */
   function handleScreenshotConfirm(croppedBase64: string) {
     screenshotData = null;
     const imageMarkdown = `![Screenshot](data:image/png;base64,${croppedBase64})`;
-    handleMessageSubmit(`Analyze this screenshot:\n\n${imageMarkdown}`);
+    prefillText = `Analyze this screenshot:\n\n${imageMarkdown}`;
   }
 
   /** Cancel screenshot selection */
@@ -236,7 +256,13 @@
           </div>
         {/if}
 
-        <ChatArea {messages} {isLoading} {streamingContent} {errorMessage} />
+        <ChatArea
+          {messages}
+          {isLoading}
+          {streamingContent}
+          {errorMessage}
+          onDismissError={dismissError}
+        />
 
         <div class="border-t pt-2 mt-auto" style="border-color: var(--border-subtle);">
           <ChatInput
@@ -244,6 +270,7 @@
             disabled={isLoading}
             isStreaming={!!currentStreamHandle}
             onStop={handleStopStream}
+            bind:prefillText
           />
         </div>
       {:else}

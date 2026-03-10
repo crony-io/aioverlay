@@ -118,12 +118,15 @@ export function createConversation(): Conversation {
   };
 }
 
-/** Generate a title from the first user message */
+/** Generate a title from the first user message, stripping markdown images */
 export function generateTitle(messages: ChatMessage[]): string {
   const firstUserMsg = messages.find((m) => m.role === 'user');
   if (!firstUserMsg) return 'New Conversation';
 
-  const text = firstUserMsg.content.trim();
+  // Strip markdown images ![alt](data:...) before generating title
+  const text = firstUserMsg.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '').trim();
+
+  if (!text) return 'Screenshot Analysis';
   if (text.length <= 40) return text;
   return text.substring(0, 40) + '…';
 }

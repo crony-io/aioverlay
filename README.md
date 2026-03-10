@@ -6,14 +6,18 @@ Ai Overlay is an open-source, local-first desktop Tauri application that provide
 
 - **Glassmorphic UI**: A stunning, frosted-glass interface that floats over your workspace.
 - **Global Shortcuts**:
-  - `Ctrl + Shift + C`: Programmatically copy selected text and open the AI prompt.
+  - `Ctrl + Shift + C`: Copy selected text and pre-fill the AI prompt.
   - `Ctrl + Shift + S`: Freeze the screen to capture specific regions for vision analysis.
+- **App Shortcuts**:
+  - `Ctrl + N`: New conversation.
+  - `Ctrl + ,`: Toggle Settings.
+  - `Ctrl + H`: Toggle chat history.
 - **Multi-Provider Support**:
   - **Cloud**: OpenAI, Anthropic, Gemini, and more providers soon.
   - **Local**: `llama.cpp` runtime download with GPU variant auto-detection for running GGUF models completely offline.
 - **Modular Architecture**: Unified AI interface for seamless switching between local and cloud models without code duplication.
 - **Privacy First**: Securely store API keys using `Tauri Stronghold` (encrypted on-disk storage).
-- **Click-Through Mode**: "Pin" the assistant to keep it visible while you work, with mouse ignore capability.
+- **Click-Through Mode**: Pin the assistant always-on-top and enable click-through so mouse events pass through to the app beneath.
 
 ## 🏗️ Architecture & Tech Stack
 

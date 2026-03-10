@@ -7,6 +7,7 @@
     deleteLlamaInstallation
   } from '$lib/services/local/llamaManager';
   import { onDownloadProgress } from '$lib/services/local/llamaDownloader';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import { Download, Trash2, CheckCircle, AlertCircle, Cpu, Loader } from 'lucide-svelte';
 
   let variants = $state<LlamaVariant[]>([]);
@@ -20,6 +21,7 @@
   let selectedVariantId = $state<string>('');
   let isDownloading = $state(false);
   let isDeleting = $state(false);
+  let showDeleteConfirm = $state(false);
   let downloadError = $state('');
 
   let progress = $state<DownloadProgress | null>(null);
@@ -100,7 +102,8 @@
     }
   }
 
-  async function handleDelete() {
+  async function confirmDelete() {
+    showDeleteConfirm = false;
     isDeleting = true;
     try {
       await deleteLlamaInstallation();
@@ -113,6 +116,16 @@
     }
   }
 </script>
+
+{#if showDeleteConfirm}
+  <ConfirmDialog
+    title="Uninstall llama-server"
+    message="This will delete the llama-server binary and all related files. Downloaded models will not be affected."
+    confirmLabel="Uninstall"
+    onConfirm={confirmDelete}
+    onCancel={() => (showDeleteConfirm = false)}
+  />
+{/if}
 
 <div class="flex flex-col gap-3 border-t border-white/10 pt-4">
   <div class="text-xs font-semibold text-white/50 uppercase tracking-wider">
@@ -134,7 +147,7 @@
       </div>
       <button
         class="ml-auto shrink-0 rounded-md p-1.5 text-white/30 transition-colors hover:bg-red-500/10 hover:text-red-400"
-        onclick={handleDelete}
+        onclick={() => (showDeleteConfirm = true)}
         disabled={isDeleting}
         title="Uninstall llama-server"
       >

@@ -5,15 +5,28 @@
     onSubmit,
     disabled = false,
     isStreaming = false,
-    onStop
+    onStop,
+    prefillText = $bindable('')
   } = $props<{
     onSubmit: (text: string) => void;
     disabled?: boolean;
     isStreaming?: boolean;
     onStop?: () => void;
+    prefillText?: string;
   }>();
 
   let inputText = $state('');
+
+  /** Apply prefilled text from parent (e.g. captured text via shortcut) */
+  $effect(() => {
+    if (prefillText) {
+      inputText = prefillText;
+      prefillText = '';
+      // Trigger auto-grow after prefill
+      requestAnimationFrame(() => handleInput());
+      textareaEl?.focus();
+    }
+  });
   let textareaEl: HTMLTextAreaElement | undefined = $state();
 
   function handleSubmit() {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ConversationMeta } from '$lib/types';
   import { formatRelativeTimeShort } from '$lib/utils/formatTime';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import { Plus, Trash2 } from 'lucide-svelte';
 
   let {
@@ -16,7 +17,34 @@
     onNewChat: () => void;
     onDelete: (id: string) => void;
   }>();
+
+  let pendingDeleteId = $state<string | null>(null);
+
+  function requestDelete(id: string) {
+    pendingDeleteId = id;
+  }
+
+  function confirmDelete() {
+    if (pendingDeleteId) {
+      onDelete(pendingDeleteId);
+      pendingDeleteId = null;
+    }
+  }
+
+  function cancelDelete() {
+    pendingDeleteId = null;
+  }
 </script>
+
+{#if pendingDeleteId}
+  <ConfirmDialog
+    title="Delete Conversation"
+    message="This conversation and all its messages will be permanently deleted."
+    confirmLabel="Delete"
+    onConfirm={confirmDelete}
+    onCancel={cancelDelete}
+  />
+{/if}
 
 <div class="flex flex-col gap-1">
   <!-- New Chat Button -->
@@ -63,7 +91,7 @@
           <button
             onclick={(e) => {
               e.stopPropagation();
-              onDelete(conv.id);
+              requestDelete(conv.id);
             }}
             class="ml-2 shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 text-white/40 hover:text-red-400 transition-opacity"
             aria-label="Delete conversation"

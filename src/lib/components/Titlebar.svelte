@@ -1,12 +1,41 @@
 <script lang="ts">
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { Zap, Pin, X } from 'lucide-svelte';
+  import { Zap, Pin, MousePointerClick, X } from 'lucide-svelte';
 
   let isPinned = $state(false);
+  let isClickThrough = $state(false);
+
+  /** Restore persisted states on mount */
+  $effect(() => {
+    const savedPin = localStorage.getItem('alwaysOnTop') === 'true';
+    if (savedPin) {
+      isPinned = true;
+      getCurrentWindow().setAlwaysOnTop(true);
+    }
+  });
 
   async function togglePin() {
     isPinned = !isPinned;
+    localStorage.setItem('alwaysOnTop', isPinned.toString());
     await getCurrentWindow().setAlwaysOnTop(isPinned);
+
+    // Disable click-through when unpinning
+    if (!isPinned && isClickThrough) {
+      isClickThrough = false;
+      await getCurrentWindow().setIgnoreCursorEvents(false);
+    }
+  }
+
+  async function toggleClickThrough() {
+    isClickThrough = !isClickThrough;
+    await getCurrentWindow().setIgnoreCursorEvents(isClickThrough);
+
+    // Auto-pin when enabling click-through
+    if (isClickThrough && !isPinned) {
+      isPinned = true;
+      localStorage.setItem('alwaysOnTop', 'true');
+      await getCurrentWindow().setAlwaysOnTop(true);
+    }
   }
 
   async function closeApp() {
@@ -42,10 +71,20 @@
         ? 'bg-white/20 text-white'
         : ''} z-10 relative"
       aria-label="Pin Window"
-      title="Pin Window"
+      title={isPinned ? 'Unpin (Always on Top)' : 'Pin (Always on Top)'}
       onclick={togglePin}
     >
       <Pin class="h-5 w-5" />
+    </button>
+    <button
+      class="rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white transition-colors {isClickThrough
+        ? 'bg-indigo-500/30 text-indigo-300'
+        : ''} z-10 relative"
+      aria-label="Click-Through Mode"
+      title={isClickThrough ? 'Disable Click-Through' : 'Enable Click-Through'}
+      onclick={toggleClickThrough}
+    >
+      <MousePointerClick class="h-5 w-5" />
     </button>
     <button
       class="rounded-lg p-2 text-white/60 hover:bg-red-500/80 hover:text-white transition-colors z-10 relative"

@@ -17,6 +17,7 @@
     clearActiveModel,
     formatFileSize
   } from '$lib/services/local/modelManager';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import {
     Search,
     Download,
@@ -51,6 +52,7 @@
   let downloadError = $state('');
 
   let isDeleting = $state<string | null>(null);
+  let pendingDeleteFilename = $state<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Derived
@@ -174,7 +176,14 @@
     setActiveModelFilename(filename);
   }
 
-  async function handleDelete(filename: string) {
+  function requestDeleteModel(filename: string) {
+    pendingDeleteFilename = filename;
+  }
+
+  async function confirmDeleteModel() {
+    if (!pendingDeleteFilename) return;
+    const filename = pendingDeleteFilename;
+    pendingDeleteFilename = null;
     isDeleting = filename;
     try {
       await deleteModel(filename);
@@ -196,6 +205,16 @@
     return String(n);
   }
 </script>
+
+{#if pendingDeleteFilename}
+  <ConfirmDialog
+    title="Delete Model"
+    message="The model file '{pendingDeleteFilename}' will be permanently deleted from disk."
+    confirmLabel="Delete"
+    onConfirm={confirmDeleteModel}
+    onCancel={() => (pendingDeleteFilename = null)}
+  />
+{/if}
 
 <div class="flex flex-col gap-3 border-t border-white/10 pt-4">
   <div class="text-xs font-semibold text-white/50 uppercase tracking-wider">Model Library</div>
@@ -229,7 +248,7 @@
           </button>
           <button
             class="shrink-0 rounded-md p-1 text-white/20 transition-colors hover:bg-red-500/10 hover:text-red-400"
-            onclick={() => handleDelete(model.filename)}
+            onclick={() => requestDeleteModel(model.filename)}
             disabled={isDeleting === model.filename}
             title="Delete model"
           >
