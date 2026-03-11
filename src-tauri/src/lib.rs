@@ -58,6 +58,12 @@ pub fn run() {
             llama::models::delete_model,
             llama::models::get_models_dir,
         ])
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                // Kill llama-server when the window is destroyed
+                llama::process::kill_llama_process();
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

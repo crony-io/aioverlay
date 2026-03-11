@@ -3,9 +3,7 @@
 </script>
 
 <div class="flex flex-col gap-3 border-t border-white/10 pt-4">
-  <div class="text-xs font-semibold text-white/50 uppercase tracking-wider">
-    API Keys (Stronghold)
-  </div>
+  <div class="text-xs font-semibold text-white/50 uppercase tracking-wider">API Keys</div>
   <input
     type="password"
     bind:value={openAiKey}

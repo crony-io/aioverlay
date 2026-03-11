@@ -185,8 +185,10 @@
   ></canvas>
 
   <!-- Action buttons -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
+    role="toolbar"
+    tabindex="0"
+    aria-label="Screenshot controls"
     class="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-white/10 bg-black/70 px-4 py-2 backdrop-blur-md"
     onmousedown={(e) => e.stopPropagation()}
   >

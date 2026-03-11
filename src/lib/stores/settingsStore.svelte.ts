@@ -3,6 +3,9 @@ import type { AIProviderID } from '$lib/services/ai/types';
 /** Valid provider IDs for validation */
 const VALID_PROVIDERS: AIProviderID[] = ['openai', 'anthropic', 'gemini', 'local'];
 
+/** Possible states for the local llama-server lifecycle */
+export type ServerStatus = 'idle' | 'starting' | 'ready' | 'error';
+
 /** localStorage keys */
 const KEYS = {
   PROVIDER: 'activeProvider',
@@ -28,6 +31,8 @@ let _activeModel = $state(localStorage.getItem(KEYS.MODEL) || '');
 let _systemPrompt = $state(localStorage.getItem(KEYS.SYSTEM_PROMPT) || '');
 let _webSearchEnabled = $state(localStorage.getItem(KEYS.WEB_SEARCH) === 'true');
 let _activeModelSupportsVision = $state(false);
+let _serverStatus = $state<ServerStatus>('idle');
+let _serverStatusMessage = $state('');
 
 /** Monotonically increasing revision counter — bumped on every write so
  *  non-rune consumers (like chatStore.ts) can snapshot the latest values. */
@@ -80,5 +85,30 @@ export const settingsStore = {
   },
   set activeModelSupportsVision(v: boolean) {
     _activeModelSupportsVision = v;
+  },
+
+  /** Current local server lifecycle status */
+  get serverStatus(): ServerStatus {
+    return _serverStatus;
+  },
+  set serverStatus(v: ServerStatus) {
+    _serverStatus = v;
+  },
+
+  /** Human-readable server status message shown in the UI */
+  get serverStatusMessage() {
+    return _serverStatusMessage;
+  },
+  set serverStatusMessage(v: string) {
+    _serverStatusMessage = v;
+  },
+
+  /**
+   * Whether the app is ready to accept and send messages.
+   * Cloud providers are always ready; local provider requires the server to be running.
+   */
+  get isReadyToSend(): boolean {
+    if (_activeProvider !== 'local') return true;
+    return _serverStatus === 'ready';
   }
 };

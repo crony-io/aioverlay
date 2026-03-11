@@ -29,9 +29,11 @@
   /** Downloaded local models fetched from the Rust backend */
   let localModels = $state<AIModelOption[]>([]);
 
-  /** Fetch downloaded models when local provider is selected or models change */
+  /** Fetch downloaded models when local provider is selected, models change,
+   *  or activeModel changes externally (e.g. from orchestrator after download). */
   $effect(() => {
     void refreshKey;
+    void activeModel;
     if (activeProvider === 'local') {
       listDownloadedModels().then((models) => {
         localModels = models.map((m) => ({
@@ -53,8 +55,10 @@
   let modelSupportsSearch = $derived(selectedModel?.supportsWebSearch ?? false);
   let showSearchInfo = $state(false);
 
-  /** When provider changes, auto-select the first model if current model is invalid */
+  /** When provider changes, auto-select the first model if current model is invalid.
+   *  Skip if the list is empty (e.g. local models still loading) to avoid clobbering. */
   $effect(() => {
+    if (availableModels.length === 0) return;
     const modelIds = availableModels.map((m) => m.id);
     if (!modelIds.includes(activeModel)) {
       activeModel = modelIds[0] ?? '';
@@ -68,9 +72,13 @@
     }
   });
 
-  /** Sync vision support to the global store so other components can check it */
+  /** Sync vision support to the global store so other components can check it.
+   *  Only overwrite if we actually resolved a model — avoids clobbering orchestrator's value
+   *  when localModels haven't loaded yet. */
   $effect(() => {
-    settingsStore.activeModelSupportsVision = selectedModel?.supportsVision ?? false;
+    if (selectedModel) {
+      settingsStore.activeModelSupportsVision = selectedModel.supportsVision ?? false;
+    }
   });
 </script>
 

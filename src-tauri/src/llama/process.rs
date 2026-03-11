@@ -1,4 +1,4 @@
-use crate::llama::platform::{install_meta_path, InstallMeta};
+use crate::llama::platform::{InstallMeta, install_meta_path};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 
@@ -49,9 +49,8 @@ pub fn start_llama_server(
 
     // Use the binary's parent directory as CWD so it can find sibling DLLs
     let binary = std::path::Path::new(&binary_path);
-    let working_dir = binary
-        .parent()
-        .ok_or_else(|| "Cannot determine binary directory".to_string())?;
+    let working_dir =
+        binary.parent().ok_or_else(|| "Cannot determine binary directory".to_string())?;
 
     let child = Command::new(&binary_path)
         .current_dir(working_dir)
@@ -78,17 +77,23 @@ pub fn start_llama_server(
 /// Stop the running llama-server process.
 #[tauri::command]
 pub fn stop_llama_server() -> Result<(), String> {
-    let mut guard = LLAMA_PROCESS.lock().map_err(|e| e.to_string())?;
+    kill_llama_process();
+    Ok(())
+}
+
+/// Internal helper: kill the llama-server child process if running.
+/// Called from both the Tauri command and the app-exit cleanup hook.
+pub fn kill_llama_process() {
+    let mut guard = match LLAMA_PROCESS.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
 
     if let Some(mut child) = guard.take() {
-        child
-            .kill()
-            .map_err(|e| format!("Failed to kill llama-server: {e}"))?;
+        let _ = child.kill();
         // Reap the process to avoid zombies
-        child.wait().ok();
+        let _ = child.wait();
     }
-
-    Ok(())
 }
 
 /// Check if the llama-server process is currently running.

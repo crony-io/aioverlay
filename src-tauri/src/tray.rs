@@ -37,6 +37,7 @@ pub fn create_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             "quit" => {
+                crate::llama::process::kill_llama_process();
                 app.exit(0);
             }
             _ => {}

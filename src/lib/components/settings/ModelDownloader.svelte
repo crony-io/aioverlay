@@ -13,10 +13,10 @@
     deleteModel,
     onModelDownloadProgress,
     getActiveModelFilename,
-    setActiveModelFilename,
     clearActiveModel,
     formatFileSize
   } from '$lib/services/local/modelManager';
+  import { switchLocalModel } from '$lib/services/local/serverOrchestrator';
   import { computePercent, formatStatus } from '$lib/utils/downloadProgress';
   import { showError } from '$lib/stores/errorStore.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -156,8 +156,15 @@
       }
       if (p.phase === 'complete') {
         downloadingFile = null;
-        loadDownloadedModels();
-        onModelsChanged();
+        loadDownloadedModels().then(async () => {
+          // Auto-activate the newly downloaded model
+          const downloaded = downloadedModels.find((m) => m.filename === filename);
+          if (downloaded) {
+            activeFilename = downloaded.filename;
+            await switchLocalModel(downloaded);
+          }
+          onModelsChanged();
+        });
       }
     });
 
@@ -171,9 +178,12 @@
     }
   }
 
-  function handleActivate(filename: string) {
+  async function handleActivate(filename: string) {
+    const model = downloadedModels.find((m) => m.filename === filename);
+    if (!model) return;
     activeFilename = filename;
-    setActiveModelFilename(filename);
+    await switchLocalModel(model);
+    onModelsChanged();
   }
 
   function requestDeleteModel(filename: string) {

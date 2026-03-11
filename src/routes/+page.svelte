@@ -19,18 +19,18 @@
     formatAccelerator
   } from '$lib/services/shortcuts/shortcutManager';
 
-  import Titlebar from '$lib/components/Titlebar.svelte';
+  import ChatHeader from '$lib/components/ChatHeader.svelte';
   import ChatArea from '$lib/components/ChatArea.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import ConversationList from '$lib/components/ConversationList.svelte';
   import Settings from '$lib/components/Settings.svelte';
   import ScreenshotOverlay from '$lib/components/ScreenshotOverlay.svelte';
-  import ChatStatusBar from '$lib/components/ChatStatusBar.svelte';
   import UpdateNotification from '$lib/components/UpdateNotification.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import { errorStore, showError } from '$lib/stores/errorStore.svelte';
   import { settingsStore } from '$lib/stores/settingsStore.svelte';
-  import { Clock, EyeOff } from 'lucide-svelte';
+  import { ensureServerRunning, destroyOrchestrator } from '$lib/services/local/serverOrchestrator';
+  import { X } from 'lucide-svelte';
 
   /** Convert a KeyboardEvent into a Tauri accelerator string for matching against stored bindings */
   function buildAcceleratorFromEvent(e: KeyboardEvent): string {
@@ -69,7 +69,7 @@
     return parts.join('+');
   }
 
-  let activeTab = $state<'chat' | 'settings'>('chat');
+  let showSettings = $state(false);
   let isLoading = $state(false);
   let showHistory = $state(false);
   let errorMessage = $state('');
@@ -109,8 +109,13 @@
     // Push stored API keys into Rust's SecureKeyStore so the HTTP proxy can authenticate
     initSecureStore().catch((e) => showError(e));
 
+    /* Auto-start local server if local provider is selected */
+    if (settingsStore.activeProvider === 'local') {
+      ensureServerRunning();
+    }
+
     onShortcutAction((action, payload) => {
-      activeTab = 'chat';
+      showSettings = false;
       if (action === 'captureText' && payload) {
         prefillText = payload;
       }
@@ -145,10 +150,10 @@
         handleNewChat();
       } else if (pressed === settingsKey) {
         e.preventDefault();
-        activeTab = activeTab === 'settings' ? 'chat' : 'settings';
+        showSettings = !showSettings;
       } else if (pressed === historyKey) {
         e.preventDefault();
-        if (activeTab === 'chat') showHistory = !showHistory;
+        showHistory = !showHistory;
       }
     }
 
@@ -156,6 +161,7 @@
 
     return () => {
       cleanupShortcuts();
+      destroyOrchestrator();
       messageDebounce.destroy();
       window.removeEventListener('keydown', handleKeyboard);
     };
@@ -330,10 +336,11 @@
   />
 {/if}
 
-<div class="flex h-full w-full items-center justify-center p-8">
+<div class="flex h-full w-full items-center justify-center p-8" data-tauri-drag-region>
   <!-- Glassmorphic Container -->
   <div
-    class="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border p-6 text-white shadow-2xl backdrop-blur-xl"
+    class="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border p-4 text-white shadow-2xl backdrop-blur-xl"
+    data-tauri-drag-region
     style="
       background: var(--surface-base);
       border-color: var(--border-default);
@@ -341,106 +348,86 @@
       height: calc(100vh - 4rem);
     "
   >
-    <Titlebar />
+    <!-- Compact header: model selector + actions + window controls -->
+    <ChatHeader
+      onToggleSettings={() => (showSettings = !showSettings)}
+      onToggleHistory={() => (showHistory = !showHistory)}
+      onToggleEphemeral={handleToggleEphemeral}
+      {showHistory}
+      isEphemeral={currentConversation.ephemeral ?? false}
+      isSettingsOpen={showSettings}
+    />
+
     <UpdateNotification />
 
-    <!-- Tabs -->
-    <div
-      class="flex items-center gap-4 border-b mb-4 px-2"
-      style="border-color: var(--border-subtle);"
-    >
-      <button
-        class="pb-2 font-medium transition-colors {activeTab === 'chat'
-          ? 'border-b-2 border-indigo-500 text-white'
-          : 'text-white/50 hover:text-white/80'}"
-        onclick={() => (activeTab = 'chat')}
-      >
-        Chat
-      </button>
-      <button
-        class="pb-2 font-medium transition-colors {activeTab === 'settings'
-          ? 'border-b-2 border-indigo-500 text-white'
-          : 'text-white/50 hover:text-white/80'}"
-        onclick={() => (activeTab = 'settings')}
-      >
-        Settings
-      </button>
-
-      <!-- Spacer -->
-      <div class="flex-1"></div>
-
-      <!-- Chat tab actions -->
-      {#if activeTab === 'chat'}
-        <button
-          onclick={handleToggleEphemeral}
-          class="rounded-lg p-1.5 transition-colors {currentConversation.ephemeral
-            ? 'bg-amber-500/20 text-amber-300'
-            : 'text-white/40 hover:text-white/70'}"
-          aria-label="Toggle Ephemeral Mode"
-          title={currentConversation.ephemeral
-            ? 'Switch to normal mode (saved)'
-            : 'Switch to ephemeral mode (not saved)'}
-        >
-          <EyeOff class="h-4 w-4" />
-        </button>
-        <button
-          class="rounded-lg p-1.5 transition-colors {showHistory
-            ? 'bg-white/10 text-white'
-            : 'text-white/40 hover:text-white/70'}"
-          onclick={() => (showHistory = !showHistory)}
-          aria-label="Toggle History"
-          title="Chat History"
-        >
-          <Clock class="h-4 w-4" />
-        </button>
-      {/if}
-    </div>
-
-    <!-- Content Area -->
+    <!-- Chat content (always visible) -->
     <div
       class="flex-1 flex flex-col overflow-hidden rounded-xl border p-4 pb-2 pt-0"
       style="background: var(--surface-raised); border-color: var(--border-subtle);"
     >
-      {#if activeTab === 'chat'}
-        <!-- History panel (collapsible) -->
-        {#if showHistory}
-          <div class="border-b py-3" style="border-color: var(--border-subtle);">
-            <ConversationList
-              {conversations}
-              activeConversationId={currentConversation.id}
-              onSelect={handleSelectConversation}
-              onNewChat={handleNewChat}
-              onDelete={handleDeleteConversation}
-            />
-          </div>
-        {/if}
-
-        <ChatArea
-          {messages}
-          {isLoading}
-          {streamingContent}
-          {errorMessage}
-          ephemeral={currentConversation.ephemeral ?? false}
-          copyTextLabel={formatAccelerator(getBinding('captureText'))}
-          screenshotLabel={formatAccelerator(getBinding('captureScreen'))}
-          onDismissError={dismissError}
-          onQuickPrompt={(text) => (prefillText = text)}
-        />
-
-        <div class="border-t pt-2 mt-auto" style="border-color: var(--border-subtle);">
-          <ChatStatusBar />
-          <ChatInput
-            onSubmit={handleMessageSubmit}
-            isStreaming={!!currentStreamHandle}
-            onStop={handleStopStream}
-            {pendingMessages}
-            bind:prefillText
-            bind:attachedImage
+      <!-- History panel (collapsible) -->
+      {#if showHistory}
+        <div class="border-b py-3" style="border-color: var(--border-subtle);">
+          <ConversationList
+            {conversations}
+            activeConversationId={currentConversation.id}
+            onSelect={handleSelectConversation}
+            onNewChat={handleNewChat}
+            onDelete={handleDeleteConversation}
           />
         </div>
-      {:else}
-        <Settings />
       {/if}
+
+      <ChatArea
+        {messages}
+        {isLoading}
+        {streamingContent}
+        {errorMessage}
+        ephemeral={currentConversation.ephemeral ?? false}
+        copyTextLabel={formatAccelerator(getBinding('captureText'))}
+        screenshotLabel={formatAccelerator(getBinding('captureScreen'))}
+        onDismissError={dismissError}
+        onQuickPrompt={(text) => (prefillText = text)}
+      />
+
+      <div class="border-t pt-2 mt-auto" style="border-color: var(--border-subtle);">
+        <ChatInput
+          onSubmit={handleMessageSubmit}
+          isStreaming={!!currentStreamHandle}
+          onStop={handleStopStream}
+          {pendingMessages}
+          bind:prefillText
+          bind:attachedImage
+        />
+      </div>
     </div>
+
+    <!-- Settings drawer (slides over chat) -->
+    {#if showSettings}
+      <div
+        class="absolute inset-0 z-40 flex flex-col rounded-2xl overflow-hidden"
+        style="background: var(--surface-base);"
+      >
+        <!-- Drawer header (draggable) -->
+        <div
+          class="flex items-center justify-between px-4 py-3 border-b"
+          style="border-color: var(--border-subtle);"
+          data-tauri-drag-region
+        >
+          <h2 class="text-sm font-semibold text-white/80 pointer-events-none">Settings</h2>
+          <button
+            onclick={() => (showSettings = false)}
+            class="rounded-md p-1.5 text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors pointer-events-auto"
+            aria-label="Close Settings"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+        <!-- Drawer content -->
+        <div class="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          <Settings />
+        </div>
+      </div>
+    {/if}
   </div>
 </div>
