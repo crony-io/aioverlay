@@ -19,6 +19,8 @@
     streamingContent = '',
     errorMessage = '',
     ephemeral = false,
+    copyTextLabel = 'Alt+C',
+    screenshotLabel = 'Alt+S',
     onDismissError,
     onQuickPrompt
   } = $props<{
@@ -27,6 +29,8 @@
     streamingContent?: string;
     errorMessage?: string;
     ephemeral?: boolean;
+    copyTextLabel?: string;
+    screenshotLabel?: string;
     onDismissError?: () => void;
     onQuickPrompt?: (text: string) => void;
   }>();
@@ -81,14 +85,14 @@
         <div class="flex items-center gap-2">
           <Command class="h-3 w-3 text-indigo-400/60" />
           <span
-            ><kbd class="rounded bg-white/10 px-1.5 py-0.5">Ctrl+Shift+C</kbd> Copy &amp; ask about selected
-            text</span
+            ><kbd class="rounded bg-white/10 px-1.5 py-0.5">{copyTextLabel}</kbd> Copy &amp; ask about
+            selected text</span
           >
         </div>
         <div class="flex items-center gap-2">
           <Camera class="h-3 w-3 text-indigo-400/60" />
           <span
-            ><kbd class="rounded bg-white/10 px-1.5 py-0.5">Ctrl+Shift+S</kbd> Capture screen region</span
+            ><kbd class="rounded bg-white/10 px-1.5 py-0.5">{screenshotLabel}</kbd> Capture screen region</span
           >
         </div>
       </div>

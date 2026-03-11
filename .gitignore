@@ -1,10 +1,32 @@
-.DS_Store
+# Dependencies
 node_modules
+
+# Build output
 /build
 /.svelte-kit
 /package
+
+# Environment variables
 .env
 .env.*
 !.env.example
+
+# Signing keys (NEVER commit)
+~/.tauri/
+*.key
+*.key.pub
+*.pem
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*

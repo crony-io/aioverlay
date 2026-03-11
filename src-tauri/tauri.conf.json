@@ -33,6 +33,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCQjQ3Q0U0MURBNDQwQzQKUldURVFLUWQ1SHkwaTlUVDRxNXFaNy9CQ2QzRlQ1cHpUSkdxd3ArL0creUFZWnU5eDRLNnNia04K",
+      "endpoints": ["https://github.com/crony-io/aioverlay/releases/latest/download/latest.json"]
+    }
   }
 }

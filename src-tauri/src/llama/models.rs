@@ -23,6 +23,12 @@ pub struct HfModelResult {
     pub downloads: u64,
     #[serde(default)]
     pub likes: i64,
+    /// HuggingFace pipeline tag (e.g. "text-generation", "image-text-to-text")
+    #[serde(default, rename = "pipeline_tag")]
+    pub pipeline_tag: Option<String>,
+    /// HuggingFace tags (e.g. ["gguf", "vision", "text-generation"])
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// Single entry from the HF tree API.
@@ -63,6 +69,12 @@ pub struct DownloadedModel {
     pub file_path: String,
     pub size: u64,
     pub downloaded_at: String,
+    /// HuggingFace pipeline tag — used to determine capabilities (e.g. vision)
+    #[serde(default)]
+    pub pipeline_tag: Option<String>,
+    /// HuggingFace tags — stored for capability detection
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// Root of the metadata file.
@@ -89,10 +101,7 @@ pub struct ModelDownloadProgress {
 // ---------------------------------------------------------------------------
 
 fn models_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let base = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to resolve AppData: {e}"))?;
+    let base = app.path().app_data_dir().map_err(|e| format!("Failed to resolve AppData: {e}"))?;
     Ok(base.join(MODELS_DIR))
 }
 
@@ -131,9 +140,8 @@ fn write_meta(app: &tauri::AppHandle, meta: &ModelsMetadata) -> Result<(), Strin
 /// Search HuggingFace for GGUF models.
 #[tauri::command]
 pub async fn search_hf_models(query: String) -> Result<Vec<HfModelResult>, String> {
-    let url = format!(
-        "{HF_API_BASE}?search={query}&filter=gguf&sort=downloads&direction=-1&limit=20"
-    );
+    let url =
+        format!("{HF_API_BASE}?search={query}&filter=gguf&sort=downloads&direction=-1&limit=20");
 
     let client = reqwest::Client::new();
     let response = client
@@ -147,10 +155,8 @@ pub async fn search_hf_models(query: String) -> Result<Vec<HfModelResult>, Strin
         return Err(format!("HF API returned status {}", response.status()));
     }
 
-    let models: Vec<HfModelResult> = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse HF response: {e}"))?;
+    let models: Vec<HfModelResult> =
+        response.json().await.map_err(|e| format!("Failed to parse HF response: {e}"))?;
 
     Ok(models)
 }
@@ -169,26 +175,18 @@ pub async fn get_model_files(repo_id: String) -> Result<Vec<GgufFileInfo>, Strin
         .map_err(|e| format!("HF tree request failed: {e}"))?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "HF tree API returned status {}",
-            response.status()
-        ));
+        return Err(format!("HF tree API returned status {}", response.status()));
     }
 
-    let entries: Vec<HfTreeEntry> = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse tree response: {e}"))?;
+    let entries: Vec<HfTreeEntry> =
+        response.json().await.map_err(|e| format!("Failed to parse tree response: {e}"))?;
 
     let gguf_files: Vec<GgufFileInfo> = entries
         .into_iter()
         .filter(|e| e.entry_type == "file" && e.path.ends_with(".gguf"))
         .map(|e| {
             let real_size = e.lfs.as_ref().map(|l| l.size).unwrap_or(e.size);
-            GgufFileInfo {
-                filename: e.path,
-                size: real_size,
-            }
+            GgufFileInfo { filename: e.path, size: real_size }
         })
         .collect();
 
@@ -207,11 +205,21 @@ pub async fn download_model(
     let dir = models_dir(&app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create models dir: {e}"))?;
 
-    let download_url = format!(
-        "https://huggingface.co/{repo_id}/resolve/main/{filename}"
-    );
-
     let client = reqwest::Client::new();
+
+    // Fetch model metadata from HF API to capture capabilities (pipeline_tag, tags)
+    let (pipeline_tag, tags) = {
+        let info_url = format!("{HF_API_BASE}/{repo_id}");
+        match client.get(&info_url).header("User-Agent", "aioverlay/0.1").send().await {
+            Ok(resp) if resp.status().is_success() => match resp.json::<HfModelResult>().await {
+                Ok(info) => (info.pipeline_tag, info.tags),
+                Err(_) => (None, Vec::new()),
+            },
+            _ => (None, Vec::new()),
+        }
+    };
+
+    let download_url = format!("https://huggingface.co/{repo_id}/resolve/main/{filename}");
     let response = client
         .get(&download_url)
         .header("User-Agent", "aioverlay/0.1")
@@ -305,6 +313,8 @@ pub async fn download_model(
         file_path: final_path.to_string_lossy().to_string(),
         size: bytes_downloaded,
         downloaded_at: now,
+        pipeline_tag,
+        tags,
     };
 
     // Update metadata file
@@ -334,8 +344,7 @@ pub async fn download_model(
 pub fn list_downloaded_models(app: tauri::AppHandle) -> Vec<DownloadedModel> {
     let mut meta = read_meta(&app);
     // Prune entries whose files no longer exist on disk
-    meta.models
-        .retain(|m| std::path::Path::new(&m.file_path).exists());
+    meta.models.retain(|m| std::path::Path::new(&m.file_path).exists());
     // Persist the pruned list (ignore write errors)
     let _ = write_meta(&app, &meta);
     meta.models
@@ -372,9 +381,8 @@ pub fn get_models_dir(app: tauri::AppHandle) -> Result<String, String> {
 
 /// Simple ISO-8601 timestamp without pulling in the `chrono` crate.
 fn chrono_now() -> String {
-    let dur = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+    let dur =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
     let secs = dur.as_secs();
     // Return Unix timestamp as a string (good enough for sorting)
     format!("{secs}")

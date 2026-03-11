@@ -9,6 +9,7 @@ import {
 } from '@tauri-apps/plugin-fs';
 import type { Conversation, ConversationMeta, ChatMessage } from '$lib/types';
 import { encryptString, tryDecrypt } from '$lib/services/crypto/chatEncryption';
+import { showError } from '$lib/stores/errorStore.svelte';
 
 const CONVERSATIONS_DIR = 'conversations';
 const INDEX_FILE = `${CONVERSATIONS_DIR}/index.json`;
@@ -81,7 +82,8 @@ export async function loadConversationList(): Promise<ConversationMeta[]> {
     const raw = await readEncrypted(INDEX_FILE);
     if (!raw) return [];
     return JSON.parse(raw) as ConversationMeta[];
-  } catch {
+  } catch (e) {
+    showError(e);
     return [];
   }
 }
@@ -103,7 +105,8 @@ export async function loadConversation(id: string): Promise<Conversation | null>
     const raw = await readEncrypted(filePath);
     if (!raw) return null;
     return JSON.parse(raw) as Conversation;
-  } catch {
+  } catch (e) {
+    showError(e);
     return null;
   }
 }
@@ -146,8 +149,8 @@ export async function deleteConversation(id: string): Promise<void> {
     if (fileExists) {
       await remove(filePath, { baseDir: BaseDirectory.AppData });
     }
-  } catch {
-    // File may not exist — safe to continue
+  } catch (e) {
+    showError(e);
   }
 
   const index = await loadConversationList();

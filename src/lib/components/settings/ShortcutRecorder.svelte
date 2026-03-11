@@ -1,13 +1,24 @@
 <script lang="ts">
-  import { Keyboard } from 'lucide-svelte';
+  import { Keyboard, Check, X } from 'lucide-svelte';
+  import { formatAccelerator } from '$lib/services/shortcuts/shortcutManager';
 
-  let { label, value = $bindable() } = $props<{
+  let { label, value, onChange } = $props<{
     label: string;
     value: string;
+    onChange: (accelerator: string) => void;
   }>();
 
   let isRecording = $state(false);
-  let pressedKeys = $state<Set<string>>(new Set());
+  /** The last valid accelerator captured during this recording session */
+  let capturedAccelerator = $state('');
+  /** Ref for the key capture button — auto-focused when recording starts */
+  let captureRef = $state<HTMLButtonElement | null>(null);
+
+  $effect(() => {
+    if (isRecording && captureRef) {
+      captureRef.focus();
+    }
+  });
 
   /** Map browser key names to Tauri accelerator format */
   function toTauriKey(key: string): string | null {
@@ -20,16 +31,7 @@
       ArrowUp: 'Up',
       ArrowDown: 'Down',
       ArrowLeft: 'Left',
-      ArrowRight: 'Right',
-      Escape: 'Escape',
-      Enter: 'Enter',
-      Backspace: 'Backspace',
-      Delete: 'Delete',
-      Tab: 'Tab',
-      Home: 'Home',
-      End: 'End',
-      PageUp: 'PageUp',
-      PageDown: 'PageDown'
+      ArrowRight: 'Right'
     };
 
     if (map[key]) return map[key];
@@ -38,7 +40,8 @@
       return key.toUpperCase();
     }
 
-    if (/^F([1-9]|1[0-2])$/.test(key)) return key;
+    // F1-F24
+    if (/^F([1-9]|1\d|2[0-4])$/.test(key)) return key;
 
     return null;
   }
@@ -48,24 +51,28 @@
     return ['Control', 'Meta', 'Shift', 'Alt'].includes(key);
   }
 
-  /** Build Tauri accelerator string from current pressed keys */
-  function buildAccelerator(): string {
-    const modifiers: string[] = [];
-    let mainKey = '';
+  /** Build Tauri accelerator string from a KeyboardEvent */
+  function buildFromEvent(e: KeyboardEvent): string {
+    const parts: string[] = [];
+    if (e.ctrlKey || e.metaKey) parts.push('CommandOrControl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
 
-    for (const key of pressedKeys) {
-      const mapped = toTauriKey(key);
-      if (!mapped) continue;
+    const mapped = toTauriKey(e.key);
+    if (!mapped || isModifier(e.key)) return '';
 
-      if (isModifier(key)) {
-        if (!modifiers.includes(mapped)) modifiers.push(mapped);
-      } else {
-        mainKey = mapped;
-      }
+    parts.push(mapped);
+    return parts.join('+');
+  }
+
+  /** Validate: needs modifier+key OR standalone F-key */
+  function isValidAccelerator(accel: string): boolean {
+    if (!accel) return false;
+    const parts = accel.split('+');
+    if (parts.length === 1) {
+      return /^F([1-9]|1\d|2[0-4])$/.test(parts[0]);
     }
-
-    if (!mainKey) return '';
-    return [...modifiers, mainKey].join('+');
+    return parts.length >= 2;
   }
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -73,83 +80,98 @@
     e.preventDefault();
     e.stopPropagation();
 
-    if (e.key === 'Escape' && pressedKeys.size === 0) {
-      isRecording = false;
+    if (e.key === 'Escape') {
+      cancelRecording();
       return;
     }
 
-    pressedKeys = new Set([...pressedKeys, e.key]);
-  }
-
-  function handleKeyUp(e: KeyboardEvent) {
-    if (!isRecording) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const hasModifier = [...pressedKeys].some(isModifier);
-    const hasMainKey = [...pressedKeys].some((k) => !isModifier(k));
-
-    // Only finalize when we have at least one modifier + one main key
-    if (!hasModifier || !hasMainKey) {
-      // If all keys released without a valid combo, just reset
-      if (!e.repeat && [...pressedKeys].every((k) => k === e.key || isModifier(k))) {
-        pressedKeys = new Set();
-      }
-      return;
+    const accel = buildFromEvent(e);
+    if (accel && isValidAccelerator(accel)) {
+      capturedAccelerator = accel;
     }
-
-    const accelerator = buildAccelerator();
-    if (accelerator) {
-      value = accelerator;
-    }
-
-    pressedKeys = new Set();
-    isRecording = false;
   }
 
   function startRecording() {
-    pressedKeys = new Set();
+    capturedAccelerator = '';
     isRecording = true;
   }
 
-  /** Format the accelerator string for display */
-  function formatDisplay(accelerator: string): string {
-    if (!accelerator) return 'Not set';
-    return accelerator
-      .split('+')
-      .map((k) => {
-        if (k === 'CommandOrControl') return 'Ctrl';
-        return k;
-      })
-      .join(' + ');
+  function confirmRecording() {
+    if (capturedAccelerator) {
+      onChange(capturedAccelerator);
+    }
+    isRecording = false;
+    capturedAccelerator = '';
+  }
+
+  function cancelRecording() {
+    isRecording = false;
+    capturedAccelerator = '';
   }
 
   let displayText = $derived(
     isRecording
-      ? pressedKeys.size > 0
-        ? [...pressedKeys].map((k) => toTauriKey(k) ?? k).join(' + ')
-        : 'Press keys...'
-      : formatDisplay(value)
+      ? capturedAccelerator
+        ? formatAccelerator(capturedAccelerator)
+        : 'Press a key combo...'
+      : formatAccelerator(value)
   );
+
+  let hasValidCapture = $derived(isRecording && !!capturedAccelerator);
 </script>
 
 <div class="flex items-center gap-2">
   <span class="w-24 shrink-0 text-sm text-white/80">{label}</span>
-  <button
-    class="flex flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors
-      {isRecording
-      ? 'border-indigo-500/70 bg-indigo-500/10 text-white ring-1 ring-indigo-500/30'
-      : 'border-white/10 bg-black/20 text-white/70 hover:border-white/20 hover:text-white'}"
-    onclick={startRecording}
-    onkeydown={handleKeyDown}
-    onkeyup={handleKeyUp}
-    onblur={() => {
-      isRecording = false;
-      pressedKeys = new Set();
-    }}
-    aria-label="Record shortcut for {label}"
-  >
-    <Keyboard class="h-3.5 w-3.5 shrink-0 {isRecording ? 'text-indigo-400' : 'text-white/40'}" />
-    <span class="truncate {isRecording ? 'text-indigo-300' : ''}">{displayText}</span>
-  </button>
+
+  {#if isRecording}
+    <!-- Recording mode: show captured combo + Set/Cancel buttons -->
+    <div
+      class="flex flex-1 items-center gap-1.5 rounded-lg border border-indigo-500/70 bg-indigo-500/10 px-3 py-1.5 text-sm ring-1 ring-indigo-500/30"
+      role="group"
+    >
+      <Keyboard class="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+      <button
+        bind:this={captureRef}
+        class="flex-1 text-left truncate text-indigo-300 bg-transparent border-none p-0 outline-none"
+        onkeydown={handleKeyDown}
+        aria-label="Press your desired shortcut"
+      >
+        {displayText}
+      </button>
+      <button
+        class="rounded px-2 py-0.5 text-xs font-medium transition-colors
+          {hasValidCapture
+          ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+          : 'bg-white/5 text-white/20 cursor-not-allowed'}"
+        disabled={!hasValidCapture}
+        onmousedown={(e) => {
+          e.preventDefault();
+          confirmRecording();
+        }}
+        aria-label="Confirm shortcut"
+      >
+        <Check class="h-3.5 w-3.5" />
+      </button>
+      <button
+        class="rounded px-2 py-0.5 text-xs font-medium bg-white/5 text-white/40 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+        onmousedown={(e) => {
+          e.preventDefault();
+          cancelRecording();
+        }}
+        aria-label="Cancel recording"
+      >
+        <X class="h-3.5 w-3.5" />
+      </button>
+    </div>
+  {:else}
+    <!-- Display mode: click to start recording -->
+    <button
+      class="flex flex-1 items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/70 hover:border-white/20 hover:text-white transition-colors"
+      onclick={startRecording}
+      aria-label="Record shortcut for {label}"
+    >
+      <Keyboard class="h-3.5 w-3.5 shrink-0 text-white/40" />
+      <span class="truncate">{displayText}</span>
+    </button>
+  {/if}
 </div>

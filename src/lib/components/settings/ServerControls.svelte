@@ -12,7 +12,14 @@
   } from '$lib/services/local/llamaManager';
   import { invoke } from '@tauri-apps/api/core';
   import type { DownloadedModel } from '$lib/services/local/types';
+  import { showError } from '$lib/stores/errorStore.svelte';
   import { Play, Square, RefreshCw, BadgeCheck, BadgeAlert, Loader } from 'lucide-svelte';
+
+  /** When the active model or refreshKey changes externally, we re-fetch state */
+  let { activeModel = '', refreshKey = 0 } = $props<{
+    activeModel?: string;
+    refreshKey?: number;
+  }>();
 
   let running = $state(false);
   let starting = $state(false);
@@ -33,15 +40,22 @@
       const models: DownloadedModel[] = await invoke('list_downloaded_models');
       downloadedModels = models;
 
-      if (!modelPath && models.length > 0) {
+      // Auto-select first model if current path no longer exists
+      const pathExists = models.some((m) => m.filePath === modelPath);
+      if (!pathExists && models.length > 0) {
         modelPath = models[0].filePath;
+      } else if (models.length === 0) {
+        modelPath = '';
       }
     } catch (e) {
-      console.error('Failed to load server state:', e);
+      showError(e);
     }
   }
 
+  /** Re-load whenever the component mounts, activeModel changes, or models are added/removed */
   $effect(() => {
+    void activeModel;
+    void refreshKey;
     loadState();
   });
 

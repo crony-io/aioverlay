@@ -1,6 +1,7 @@
 import { marked, type RendererObject } from 'marked';
 import DOMPurify from 'dompurify';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
+import { showError } from '$lib/stores/errorStore.svelte';
 
 /** Supported languages for syntax highlighting */
 const SUPPORTED_LANGUAGES: BundledLanguage[] = [
@@ -66,8 +67,8 @@ async function highlightCode(code: string, lang: string): Promise<string> {
       lang: resolvedLang,
       theme: 'github-dark-default'
     });
-  } catch {
-    // Fallback: wrap in pre/code without highlighting
+  } catch (e) {
+    showError(e);
     const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return `<pre class="shiki"><code>${escaped}</code></pre>`;
   }
@@ -120,8 +121,8 @@ export function renderMarkdown(content: string): RenderResult {
     const pendingBlocks = currentRenderBlocks;
     currentRenderBlocks = new Map();
     return { html, pendingBlocks };
-  } catch (error) {
-    console.error('Error rendering markdown:', error);
+  } catch (e) {
+    showError(e);
     return {
       html: '<p class="text-red-400">Error rendering content</p>',
       pendingBlocks: new Map()

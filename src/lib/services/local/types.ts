@@ -47,6 +47,10 @@ export interface HfModelResult {
   author: string | null;
   downloads: number;
   likes: number;
+  /** HuggingFace pipeline tag (e.g. "text-generation", "image-text-to-text") */
+  pipeline_tag: string | null;
+  /** HuggingFace tags (e.g. ["gguf", "vision", "text-generation"]) */
+  tags: string[];
 }
 
 /** Info about a GGUF file in a HuggingFace repo */
@@ -62,6 +66,10 @@ export interface DownloadedModel {
   filePath: string;
   size: number;
   downloadedAt: string;
+  /** HuggingFace pipeline tag — used to determine capabilities (e.g. vision) */
+  pipelineTag: string | null;
+  /** HuggingFace tags — stored for capability detection */
+  tags: string[];
 }
 
 /** Progress event payload for model file downloads */

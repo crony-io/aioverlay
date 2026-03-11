@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { getActiveProvider, getActiveModel, isWebSearchEnabled } from '$lib/stores/chatStore';
+  import { settingsStore } from '$lib/stores/settingsStore.svelte';
   import { getProvider } from '$lib/services/ai/registry';
   import { Globe, Cpu } from 'lucide-svelte';
 
   let providerLabel = $derived.by(() => {
     try {
-      return getProvider(getActiveProvider()).label;
+      return getProvider(settingsStore.activeProvider).label;
     } catch {
       return 'Unknown';
     }
@@ -13,11 +13,15 @@
 
   let modelLabel = $derived.by(() => {
     try {
-      const provider = getProvider(getActiveProvider());
-      const modelId = getActiveModel();
+      const provider = getProvider(settingsStore.activeProvider);
+      const modelId = settingsStore.activeModel;
       const model = provider.models.find((m) => m.id === modelId);
       if (model) return model.label;
-      if (modelId) return modelId;
+      // For local models the ID is a file path — extract filename
+      if (modelId) {
+        const parts = modelId.replace(/\\/g, '/').split('/');
+        return parts[parts.length - 1] || modelId;
+      }
       const first = provider.models[0];
       return first ? first.label : 'Default';
     } catch {
@@ -27,8 +31,8 @@
 
   let currentModelSupportsSearch = $derived.by(() => {
     try {
-      const provider = getProvider(getActiveProvider());
-      const modelId = getActiveModel();
+      const provider = getProvider(settingsStore.activeProvider);
+      const modelId = settingsStore.activeModel;
       const model = provider.models.find((m) => m.id === modelId);
       return model?.supportsWebSearch ?? false;
     } catch {
@@ -36,7 +40,7 @@
     }
   });
 
-  let searchActive = $derived(isWebSearchEnabled() && currentModelSupportsSearch);
+  let searchActive = $derived(settingsStore.webSearchEnabled && currentModelSupportsSearch);
 </script>
 
 <div class="flex items-center gap-2 px-1 py-1 text-[10px]" style="color: var(--text-muted);">

@@ -18,6 +18,7 @@
     formatFileSize
   } from '$lib/services/local/modelManager';
   import { computePercent, formatStatus } from '$lib/utils/downloadProgress';
+  import { showError } from '$lib/stores/errorStore.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import DownloadProgressBar from '$lib/components/settings/DownloadProgressBar.svelte';
   import {
@@ -30,8 +31,19 @@
     Loader,
     HardDrive,
     Heart,
-    ArrowDownToLine
+    ArrowDownToLine,
+    Eye
   } from 'lucide-svelte';
+
+  /** Check if a HF model supports vision based on pipeline_tag or tags */
+  function isVisionModel(result: { pipeline_tag?: string | null; tags?: string[] }): boolean {
+    if (result.pipeline_tag === 'image-text-to-text') return true;
+    if (result.tags?.some((t) => t === 'vision' || t === 'image-text-to-text')) return true;
+    return false;
+  }
+
+  /** Callback fired when models are downloaded or deleted */
+  let { onModelsChanged = () => {} } = $props<{ onModelsChanged?: () => void }>();
 
   // ---------------------------------------------------------------------------
   // State
@@ -96,7 +108,7 @@
         activeFilename = '';
       }
     } catch (e) {
-      console.error('Failed to load downloaded models:', e);
+      showError(e);
     }
   }
 
@@ -125,7 +137,7 @@
     try {
       repoFiles = await getModelFiles(repoId);
     } catch (e) {
-      console.error('Failed to load model files:', e);
+      showError(e);
     } finally {
       isLoadingFiles = false;
     }
@@ -145,6 +157,7 @@
       if (p.phase === 'complete') {
         downloadingFile = null;
         loadDownloadedModels();
+        onModelsChanged();
       }
     });
 
@@ -179,8 +192,9 @@
         activeFilename = '';
       }
       await loadDownloadedModels();
+      onModelsChanged();
     } catch (e) {
-      console.error('Failed to delete model:', e);
+      showError(e);
     } finally {
       isDeleting = null;
     }
@@ -230,6 +244,9 @@
               <span class="text-xs text-white/80 truncate">{model.filename}</span>
               <span class="text-[10px] text-white/30 truncate">
                 {model.repoId} · {formatFileSize(model.size)}
+                {#if model.pipelineTag === 'image-text-to-text' || model.tags?.includes('vision')}
+                  · <span class="text-indigo-400/70">Vision</span>
+                {/if}
               </span>
             </div>
           </button>
@@ -294,6 +311,12 @@
                   <Heart class="h-2.5 w-2.5" />
                   {result.likes}
                 </span>
+                {#if isVisionModel(result)}
+                  <span class="flex items-center gap-0.5 text-indigo-400/70">
+                    <Eye class="h-2.5 w-2.5" />
+                    Vision
+                  </span>
+                {/if}
               </div>
             </div>
             {#if isExpanded}

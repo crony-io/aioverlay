@@ -2,6 +2,8 @@ mod ai_proxy;
 mod capture;
 mod input;
 mod llama;
+mod shortcuts;
+mod tray;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,14 +23,23 @@ pub fn run() {
             .build(),
         )
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            #[cfg(desktop)]
+            {
+                shortcuts::init_plugin(app)?;
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+                tray::create_tray(app)?;
+            }
+            Ok(())
+        })
         .manage(ai_proxy::SecureKeyStore::default())
         .manage(ai_proxy::ActiveStreams::default())
         .invoke_handler(tauri::generate_handler![
             input::simulate_copy,
             capture::take_screenshot,
+            shortcuts::update_global_shortcuts,
             ai_proxy::store_provider_key,
             ai_proxy::stream_ai_request,
             ai_proxy::cancel_ai_stream,

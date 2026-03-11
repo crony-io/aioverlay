@@ -7,6 +7,8 @@ import type {
 } from '$lib/services/ai/types';
 import { saveConversation, generateTitle } from '$lib/chatHistory';
 import { getProvider } from '$lib/services/ai/registry';
+import { getApiKey } from '$lib/storage';
+import { settingsStore } from '$lib/stores/settingsStore.svelte';
 
 /** Regex to match inline base64 images in markdown: ![alt](data:mime;base64,DATA) */
 const BASE64_IMAGE_REGEX = /!\[[^\]]*\]\(data:([^;]+);base64,([^)]+)\)/g;
@@ -46,35 +48,24 @@ function toAIMessage(msg: { role: string; content: string }): AIMessage {
   return { role: msg.role as AIMessage['role'], content: parts };
 }
 
-/** Valid provider IDs for localStorage validation */
-const VALID_PROVIDERS: AIProviderID[] = ['openai', 'anthropic', 'gemini', 'local'];
-
-/** Settings keys stored in localStorage */
-const SETTINGS_KEYS = {
-  ACTIVE_PROVIDER: 'activeProvider',
-  ACTIVE_MODEL: 'activeModel',
-  SYSTEM_PROMPT: 'systemPrompt',
-  WEB_SEARCH: 'webSearchEnabled'
-} as const;
-
+/** Read the current active provider from the reactive store */
 export function getActiveProvider(): AIProviderID {
-  const stored = localStorage.getItem(SETTINGS_KEYS.ACTIVE_PROVIDER);
-  if (stored && VALID_PROVIDERS.includes(stored as AIProviderID)) {
-    return stored as AIProviderID;
-  }
-  return 'openai';
+  return settingsStore.activeProvider;
 }
 
+/** Read the current active model from the reactive store */
 export function getActiveModel(): string {
-  return localStorage.getItem(SETTINGS_KEYS.ACTIVE_MODEL) || '';
+  return settingsStore.activeModel;
 }
 
+/** Read the current system prompt from the reactive store */
 export function getSystemPrompt(): string {
-  return localStorage.getItem(SETTINGS_KEYS.SYSTEM_PROMPT) || '';
+  return settingsStore.systemPrompt;
 }
 
+/** Check if web search is enabled from the reactive store */
 export function isWebSearchEnabled(): boolean {
-  return localStorage.getItem(SETTINGS_KEYS.WEB_SEARCH) === 'true';
+  return settingsStore.webSearchEnabled;
 }
 
 /**
@@ -112,6 +103,15 @@ export async function sendMessageAndStream(opts: {
 
   const provider = getProvider(providerId);
   const model = modelId || provider.models[0]?.id || '';
+
+  // Validate API key for cloud providers before attempting to stream
+  if (providerId !== 'local') {
+    const apiKey = await getApiKey(providerId);
+    if (!apiKey) {
+      onError(`No API key configured for ${provider.label}. Add one in Settings → API Keys.`);
+      return null;
+    }
+  }
 
   const aiMessages = conversation.messages.map(toAIMessage);
 

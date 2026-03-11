@@ -1,29 +1,81 @@
-import {
-  register,
-  unregister,
-  unregisterAll,
-  type ShortcutEvent
-} from '@tauri-apps/plugin-global-shortcut';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
+import { showError } from '$lib/stores/errorStore.svelte';
 
-/** Shortcut action identifiers */
-export type ShortcutAction = 'captureText' | 'captureScreen';
+/** All configurable shortcut action identifiers */
+export type ShortcutAction =
+  | 'captureText'
+  | 'captureScreen'
+  | 'showWindow'
+  | 'newChat'
+  | 'toggleHistory'
+  | 'toggleSettings';
 
 /** Callback when a shortcut action fires */
 export type ShortcutActionHandler = (action: ShortcutAction, payload?: string) => void;
 
-/** LocalStorage keys for shortcut bindings */
-const STORAGE_KEYS = {
-  COPY_KEY: 'copyKey',
-  SCREENSHOT_KEY: 'screenshotKey'
-} as const;
+/** Listener for registration status changes */
+export type StatusChangeListener = (status: ShortcutRegistrationStatus) => void;
 
-const DEFAULT_COPY_KEY = 'CommandOrControl+Shift+C';
-const DEFAULT_SCREENSHOT_KEY = 'CommandOrControl+Shift+S';
+/** Per-shortcut configuration */
+export interface ShortcutBinding {
+  action: ShortcutAction;
+  label: string;
+  /** Whether this is a Tauri global shortcut (vs app-level keyboard handler) */
+  global: boolean;
+  storageKey: string;
+  defaultKey: string;
+}
 
-/** Registration result returned by getRegistrationStatus */
+/** All shortcut definitions */
+export const SHORTCUT_DEFINITIONS: ShortcutBinding[] = [
+  {
+    action: 'captureText',
+    label: 'Copy Text',
+    global: true,
+    storageKey: 'shortcut_captureText',
+    defaultKey: 'Alt+C'
+  },
+  {
+    action: 'captureScreen',
+    label: 'Screenshot',
+    global: true,
+    storageKey: 'shortcut_captureScreen',
+    defaultKey: 'Alt+S'
+  },
+  {
+    action: 'showWindow',
+    label: 'Show Window',
+    global: true,
+    storageKey: 'shortcut_showWindow',
+    defaultKey: 'Alt+A'
+  },
+  {
+    action: 'newChat',
+    label: 'New Chat',
+    global: false,
+    storageKey: 'shortcut_newChat',
+    defaultKey: 'CommandOrControl+N'
+  },
+  {
+    action: 'toggleHistory',
+    label: 'Toggle History',
+    global: false,
+    storageKey: 'shortcut_toggleHistory',
+    defaultKey: 'CommandOrControl+H'
+  },
+  {
+    action: 'toggleSettings',
+    label: 'Toggle Settings',
+    global: false,
+    storageKey: 'shortcut_toggleSettings',
+    defaultKey: 'CommandOrControl+,'
+  }
+];
+
+/** Registration status */
 export interface ShortcutRegistrationStatus {
   registered: boolean;
   shortcuts: string[];
@@ -33,13 +85,68 @@ export interface ShortcutRegistrationStatus {
 let actionHandler: ShortcutActionHandler | null = null;
 let registeredShortcuts: string[] = [];
 let lastRegistrationError: string | null = null;
+let statusListeners: StatusChangeListener[] = [];
+let unlistenShortcut: UnlistenFn | null = null;
+let unlistenError: UnlistenFn | null = null;
 
-/** Get the current shortcut bindings from localStorage */
-function getBindings(): { copyKey: string; screenshotKey: string } {
-  return {
-    copyKey: localStorage.getItem(STORAGE_KEYS.COPY_KEY) || DEFAULT_COPY_KEY,
-    screenshotKey: localStorage.getItem(STORAGE_KEYS.SCREENSHOT_KEY) || DEFAULT_SCREENSHOT_KEY
+/** Migrate old localStorage keys to new format (one-time) */
+function migrateOldBindings(): void {
+  const OLD_KEY_MAP: Record<string, string> = {
+    copyKey: 'shortcut_captureText',
+    screenshotKey: 'shortcut_captureScreen'
   };
+  for (const [oldKey, newKey] of Object.entries(OLD_KEY_MAP)) {
+    const oldVal = localStorage.getItem(oldKey);
+    if (oldVal && !localStorage.getItem(newKey)) {
+      localStorage.setItem(newKey, oldVal);
+      localStorage.removeItem(oldKey);
+    }
+  }
+}
+
+// Run migration on module load
+if (typeof localStorage !== 'undefined') {
+  migrateOldBindings();
+}
+
+/** Notify all status listeners */
+function notifyStatusChange(): void {
+  const status = getRegistrationStatus();
+  for (const listener of statusListeners) {
+    listener(status);
+  }
+}
+
+/** Subscribe to registration status changes. Returns an unsubscribe function. */
+export function onStatusChange(listener: StatusChangeListener): () => void {
+  statusListeners.push(listener);
+  return () => {
+    statusListeners = statusListeners.filter((l) => l !== listener);
+  };
+}
+
+/** Get the stored binding for a specific action */
+export function getBinding(action: ShortcutAction): string {
+  const def = SHORTCUT_DEFINITIONS.find((d) => d.action === action);
+  if (!def) return '';
+  return localStorage.getItem(def.storageKey) || def.defaultKey;
+}
+
+/** Get all current bindings as a map */
+export function getAllBindings(): Record<ShortcutAction, string> {
+  const result = {} as Record<ShortcutAction, string>;
+  for (const def of SHORTCUT_DEFINITIONS) {
+    result[def.action] = localStorage.getItem(def.storageKey) || def.defaultKey;
+  }
+  return result;
+}
+
+/** Save a binding for a specific action */
+export function saveBinding(action: ShortcutAction, accelerator: string): void {
+  const def = SHORTCUT_DEFINITIONS.find((d) => d.action === action);
+  if (def) {
+    localStorage.setItem(def.storageKey, accelerator);
+  }
 }
 
 /** Show and focus the overlay window */
@@ -49,36 +156,62 @@ async function showOverlay(): Promise<void> {
   await win.setFocus();
 }
 
-/** Handle a global shortcut event */
-async function handleShortcut(event: ShortcutEvent): Promise<void> {
-  if (event.state !== 'Pressed') return;
+/** Build a map from lowercase accelerator string → action for fast lookup */
+function buildShortcutMap(): Map<string, ShortcutAction> {
+  const map = new Map<string, ShortcutAction>();
+  for (const def of SHORTCUT_DEFINITIONS) {
+    if (!def.global) continue;
+    const key = localStorage.getItem(def.storageKey) || def.defaultKey;
+    if (key) map.set(key.toLowerCase(), def.action);
+  }
+  return map;
+}
 
-  const { copyKey, screenshotKey } = getBindings();
+/** Handle a global shortcut event emitted from Rust */
+async function handleShortcutFromRust(accelerator: string): Promise<void> {
+  const map = buildShortcutMap();
+  const action = map.get(accelerator.toLowerCase());
 
-  if (event.shortcut === copyKey) {
+  if (action === 'captureText') {
     await handleCaptureText();
-  } else if (event.shortcut === screenshotKey) {
+  } else if (action === 'captureScreen') {
     await handleCaptureScreen();
+  } else if (action === 'showWindow') {
+    await showOverlay();
+    actionHandler?.('showWindow');
   }
 }
 
 /**
- * Text capture: hide overlay, simulate Ctrl+C via enigo,
- * read clipboard, then show overlay with the captured text.
+ * Text capture: hide overlay, wait for OS to restore focus to previous window,
+ * simulate Ctrl+C via enigo, read clipboard, then show overlay with captured text.
  */
 async function handleCaptureText(): Promise<void> {
   try {
     const win = getCurrentWindow();
     await win.hide();
 
+    // Wait for OS to move focus back to the window where text was selected
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     // Simulate Ctrl+C via Rust enigo command
     await invoke('simulate_copy');
 
+    // Wait for clipboard to be populated by the OS
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
     const text = await readText();
     await showOverlay();
-    actionHandler?.('captureText', text || '');
-  } catch (error) {
-    console.error('Failed to capture text:', error);
+
+    if (!text || text.trim().length === 0) {
+      showError('No text was captured. Make sure text is selected before pressing the shortcut.');
+      actionHandler?.('captureText', '');
+      return;
+    }
+
+    actionHandler?.('captureText', text);
+  } catch (e) {
+    showError(e);
     await showOverlay();
     actionHandler?.('captureText', '');
   }
@@ -97,55 +230,62 @@ async function handleCaptureScreen(): Promise<void> {
 
     await showOverlay();
     actionHandler?.('captureScreen', JSON.stringify(result));
-  } catch (error) {
-    console.error('Failed to capture screen:', error);
+  } catch (e) {
+    showError(e);
     await showOverlay();
     actionHandler?.('captureScreen');
   }
 }
 
 /**
- * Register all global shortcuts.
- * Call this once on app startup and again whenever bindings change.
+ * Register all global shortcuts via the Rust backend.
+ * Defaults are registered by Rust on app startup.
+ * Call this again whenever bindings change to re-register.
  */
 export async function registerShortcuts(): Promise<void> {
-  // Unregister any previously registered shortcuts
-  await unregisterCurrentShortcuts();
-
-  const { copyKey, screenshotKey } = getBindings();
-
-  const shortcuts = [copyKey, screenshotKey].filter(Boolean);
-  // Deduplicate in case both are somehow the same
-  const unique = [...new Set(shortcuts)];
-
-  try {
-    if (unique.length > 0) {
-      await register(unique, handleShortcut);
-      registeredShortcuts = unique;
-      lastRegistrationError = null;
-    }
-  } catch (error) {
-    console.error('Failed to register global shortcuts:', error);
-    lastRegistrationError = error instanceof Error ? error.message : String(error);
+  // Listen for Rust-emitted shortcut events (only once)
+  if (!unlistenShortcut) {
+    unlistenShortcut = await listen<string>('global-shortcut-event', (event) => {
+      handleShortcutFromRust(event.payload).catch((e) => showError(e));
+    });
   }
-}
 
-/** Unregister currently registered shortcuts */
-async function unregisterCurrentShortcuts(): Promise<void> {
-  if (registeredShortcuts.length === 0) return;
+  // Listen for Rust-emitted shortcut errors (only once)
+  if (!unlistenError) {
+    unlistenError = await listen<string>('shortcut-error', (event) => {
+      showError(event.payload);
+    });
+  }
 
-  try {
-    await unregister(registeredShortcuts);
-  } catch {
-    // If individual unregister fails, try unregisterAll as fallback
-    try {
-      await unregisterAll();
-    } catch (e) {
-      console.error('Failed to unregister shortcuts:', e);
+  // Collect the current global shortcut bindings
+  const globalDefs = SHORTCUT_DEFINITIONS.filter((d) => d.global);
+  const shortcuts: string[] = [];
+  for (const def of globalDefs) {
+    const key = localStorage.getItem(def.storageKey) || def.defaultKey;
+    if (key && !shortcuts.some((s) => s.toLowerCase() === key.toLowerCase())) {
+      shortcuts.push(key);
     }
   }
 
-  registeredShortcuts = [];
+  if (shortcuts.length === 0) {
+    lastRegistrationError = null;
+    registeredShortcuts = [];
+    notifyStatusChange();
+    return;
+  }
+
+  // Ask Rust to re-register at the OS level
+  try {
+    const result = await invoke<string[]>('update_global_shortcuts', { shortcuts });
+    registeredShortcuts = result;
+    lastRegistrationError = null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    lastRegistrationError = msg;
+    registeredShortcuts = [];
+    showError(`Shortcut registration failed: ${msg}`);
+  }
+  notifyStatusChange();
 }
 
 /** Set the action handler that receives shortcut events */
@@ -162,8 +302,25 @@ export function getRegistrationStatus(): ShortcutRegistrationStatus {
   };
 }
 
+/** Format an accelerator string for display (e.g. "CommandOrControl+N" → "Ctrl + N") */
+export function formatAccelerator(accelerator: string): string {
+  if (!accelerator) return 'Not set';
+  return accelerator
+    .split('+')
+    .map((k) => {
+      if (k.toLowerCase() === 'commandorcontrol') return 'Ctrl';
+      return k;
+    })
+    .join(' + ');
+}
+
 /** Clean up all shortcuts (call on app teardown) */
 export async function cleanupShortcuts(): Promise<void> {
   actionHandler = null;
-  await unregisterCurrentShortcuts();
+  statusListeners = [];
+  unlistenShortcut?.();
+  unlistenShortcut = null;
+  unlistenError?.();
+  unlistenError = null;
+  registeredShortcuts = [];
 }

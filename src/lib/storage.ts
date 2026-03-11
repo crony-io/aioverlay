@@ -2,6 +2,7 @@ import { Stronghold } from '@tauri-apps/plugin-stronghold';
 import type { Store, Client } from '@tauri-apps/plugin-stronghold';
 import { exists, readTextFile, writeTextFile, remove, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { storeProviderKey } from '$lib/services/ai/rustProxy';
+import { showError } from '$lib/stores/errorStore.svelte';
 
 /** Secure vault path (new per-install encrypted vault) */
 const VAULT_PATH = 'keys.vault';
@@ -145,7 +146,7 @@ async function initStorage(): Promise<Store> {
       try {
         await remove(LEGACY_VAULT_PATH, { baseDir: BaseDirectory.AppData });
       } catch {
-        console.warn('Could not remove legacy vault file.');
+        // Legacy vault removal is non-critical
       }
 
       return storeInstance;
@@ -153,22 +154,17 @@ async function initStorage(): Promise<Store> {
   }
 
   // Normal path: load or create the secure vault
+  strongholdInstance = await Stronghold.load(VAULT_PATH, password);
+
+  let client: Client;
   try {
-    strongholdInstance = await Stronghold.load(VAULT_PATH, password);
-
-    let client: Client;
-    try {
-      client = await strongholdInstance.loadClient(STORE_NAME);
-    } catch {
-      client = await strongholdInstance.createClient(STORE_NAME);
-    }
-
-    storeInstance = client.getStore();
-    return storeInstance;
-  } catch (error) {
-    console.error('Failed to initialize Stronghold:', error);
-    throw error;
+    client = await strongholdInstance.loadClient(STORE_NAME);
+  } catch {
+    client = await strongholdInstance.createClient(STORE_NAME);
   }
+
+  storeInstance = client.getStore();
+  return storeInstance;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +186,8 @@ export async function getApiKey(provider: string): Promise<string | null> {
     const data = await store.get(provider);
     if (!data) return null;
     return new TextDecoder().decode(data);
-  } catch {
+  } catch (e) {
+    showError(e);
     return null;
   }
 }

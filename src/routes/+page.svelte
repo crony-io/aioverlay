@@ -14,7 +14,9 @@
   import {
     registerShortcuts,
     onShortcutAction,
-    cleanupShortcuts
+    cleanupShortcuts,
+    getBinding,
+    formatAccelerator
   } from '$lib/services/shortcuts/shortcutManager';
 
   import Titlebar from '$lib/components/Titlebar.svelte';
@@ -24,7 +26,48 @@
   import Settings from '$lib/components/Settings.svelte';
   import ScreenshotOverlay from '$lib/components/ScreenshotOverlay.svelte';
   import ChatStatusBar from '$lib/components/ChatStatusBar.svelte';
+  import UpdateNotification from '$lib/components/UpdateNotification.svelte';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import { errorStore, showError } from '$lib/stores/errorStore.svelte';
+  import { settingsStore } from '$lib/stores/settingsStore.svelte';
   import { Clock, EyeOff } from 'lucide-svelte';
+
+  /** Convert a KeyboardEvent into a Tauri accelerator string for matching against stored bindings */
+  function buildAcceleratorFromEvent(e: KeyboardEvent): string {
+    const parts: string[] = [];
+    if (e.ctrlKey || e.metaKey) parts.push('CommandOrControl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+
+    const key = e.key;
+    // Skip if the key itself is just a modifier
+    if (['Control', 'Meta', 'Shift', 'Alt'].includes(key)) return '';
+
+    // Map special keys
+    const keyMap: Record<string, string> = {
+      ',': ',',
+      '<': ',',
+      ' ': 'Space',
+      ArrowUp: 'Up',
+      ArrowDown: 'Down',
+      ArrowLeft: 'Left',
+      ArrowRight: 'Right'
+    };
+
+    let mapped = keyMap[key];
+    if (!mapped) {
+      if (key.length === 1 && /[a-zA-Z0-9]/.test(key)) {
+        mapped = key.toUpperCase();
+      } else if (/^F([1-9]|1\d|2[0-4])$/.test(key)) {
+        mapped = key;
+      } else {
+        mapped = key;
+      }
+    }
+
+    parts.push(mapped);
+    return parts.join('+');
+  }
 
   let activeTab = $state<'chat' | 'settings'>('chat');
   let isLoading = $state(false);
@@ -57,12 +100,14 @@
 
   /** Load conversations, init secure key store, and register global shortcuts on mount */
   $effect(() => {
-    loadConversationList().then((list) => {
-      conversations = list;
-    });
+    loadConversationList()
+      .then((list) => {
+        conversations = list;
+      })
+      .catch((e) => showError(e));
 
     // Push stored API keys into Rust's SecureKeyStore so the HTTP proxy can authenticate
-    initSecureStore();
+    initSecureStore().catch((e) => showError(e));
 
     onShortcutAction((action, payload) => {
       activeTab = 'chat';
@@ -70,28 +115,38 @@
         prefillText = payload;
       }
       if (action === 'captureScreen' && payload) {
+        if (!settingsStore.activeModelSupportsVision) {
+          showError(
+            'Screenshot capture is not available — the selected model does not support vision.'
+          );
+          return;
+        }
         try {
           screenshotData = JSON.parse(payload);
-        } catch {
-          console.error('Failed to parse screenshot data');
+        } catch (e) {
+          showError(`Failed to parse screenshot data: ${e}`);
         }
       }
     });
 
-    registerShortcuts();
+    registerShortcuts().catch((e) => showError(e));
 
-    /** U10: App-level keyboard shortcuts */
+    /** App-level keyboard shortcuts — reads configurable bindings */
     function handleKeyboard(e: KeyboardEvent) {
-      const isCtrl = e.ctrlKey || e.metaKey;
-      if (!isCtrl) return;
+      const pressed = buildAcceleratorFromEvent(e);
+      if (!pressed) return;
 
-      if (e.key === 'n' || e.key === 'N') {
+      const newChatKey = getBinding('newChat');
+      const historyKey = getBinding('toggleHistory');
+      const settingsKey = getBinding('toggleSettings');
+
+      if (pressed === newChatKey) {
         e.preventDefault();
         handleNewChat();
-      } else if (e.key === ',' || e.key === '<') {
+      } else if (pressed === settingsKey) {
         e.preventDefault();
         activeTab = activeTab === 'settings' ? 'chat' : 'settings';
-      } else if (e.key === 'h' || e.key === 'H') {
+      } else if (pressed === historyKey) {
         e.preventDefault();
         if (activeTab === 'chat') showHistory = !showHistory;
       }
@@ -119,39 +174,48 @@
     errorMessage = '';
     streamingContent = '';
 
-    const handle = await sendMessageAndStream({
-      conversation: currentConversation,
-      userText: text,
-      onConversationUpdate: (conv) => {
-        currentConversation = { ...conv };
-        if (!conv.ephemeral) loadConversationList().then((list) => (conversations = list));
-      },
-      onStreamChunk: (fullContent) => {
-        streamingContent = fullContent;
-      },
-      onComplete: (conv) => {
-        currentConversation = { ...conv };
-        streamingContent = '';
-        isLoading = false;
-        currentStreamHandle = null;
-        if (!conv.ephemeral) loadConversationList().then((list) => (conversations = list));
+    try {
+      const handle = await sendMessageAndStream({
+        conversation: currentConversation,
+        userText: text,
+        onConversationUpdate: (conv) => {
+          currentConversation = { ...conv };
+          if (!conv.ephemeral) loadConversationList().then((list) => (conversations = list));
+        },
+        onStreamChunk: (fullContent) => {
+          streamingContent = fullContent;
+        },
+        onComplete: (conv) => {
+          currentConversation = { ...conv };
+          streamingContent = '';
+          isLoading = false;
+          currentStreamHandle = null;
+          if (!conv.ephemeral) loadConversationList().then((list) => (conversations = list));
 
-        // Auto-send queued messages that arrived while AI was busy
-        if (queuedMessage) {
-          const queued = queuedMessage;
-          queuedMessage = '';
-          dispatchToAI(queued);
+          // Auto-send queued messages that arrived while AI was busy
+          if (queuedMessage) {
+            const queued = queuedMessage;
+            queuedMessage = '';
+            dispatchToAI(queued);
+          }
+        },
+        onError: (error) => {
+          errorMessage = error;
+          streamingContent = '';
+          isLoading = false;
+          currentStreamHandle = null;
         }
-      },
-      onError: (error) => {
-        errorMessage = error;
-        streamingContent = '';
-        isLoading = false;
-        currentStreamHandle = null;
-      }
-    });
+      });
 
-    currentStreamHandle = handle;
+      currentStreamHandle = handle;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to send message';
+      errorMessage = msg;
+      showError(msg);
+      streamingContent = '';
+      isLoading = false;
+      currentStreamHandle = null;
+    }
   }
 
   /** Debounce handle — batches rapid-fire messages before sending to AI */
@@ -188,16 +252,29 @@
     if (currentStreamHandle) handleStopStream();
     messageDebounce.cancel();
     queuedMessage = '';
+    // Always clear loading/error state so a new conversation starts clean
+    isLoading = false;
+    errorMessage = '';
+    streamingContent = '';
+    currentStreamHandle = null;
     currentConversation = createConversation();
     showHistory = false;
   }
 
-  /** Start an ephemeral conversation (not persisted to disk) */
-  function handleNewEphemeralChat() {
+  /** Toggle ephemeral mode — if already ephemeral switch to normal, otherwise start ephemeral */
+  function handleToggleEphemeral() {
     if (currentStreamHandle) handleStopStream();
     messageDebounce.cancel();
     queuedMessage = '';
-    currentConversation = createEphemeralConversation();
+    isLoading = false;
+    errorMessage = '';
+    streamingContent = '';
+    currentStreamHandle = null;
+    if (currentConversation.ephemeral) {
+      currentConversation = createConversation();
+    } else {
+      currentConversation = createEphemeralConversation();
+    }
     showHistory = false;
   }
 
@@ -235,6 +312,16 @@
   }
 </script>
 
+{#if errorStore.error}
+  <ConfirmDialog
+    title="Error"
+    message={errorStore.error}
+    confirmLabel="OK"
+    onConfirm={() => errorStore.dismiss()}
+    onCancel={() => errorStore.dismiss()}
+  />
+{/if}
+
 {#if screenshotData}
   <ScreenshotOverlay
     {screenshotData}
@@ -250,10 +337,12 @@
     style="
       background: var(--surface-base);
       border-color: var(--border-default);
-      height: 520px;
+      max-height: 520px;
+      height: calc(100vh - 4rem);
     "
   >
     <Titlebar />
+    <UpdateNotification />
 
     <!-- Tabs -->
     <div
@@ -283,14 +372,14 @@
       <!-- Chat tab actions -->
       {#if activeTab === 'chat'}
         <button
-          onclick={handleNewEphemeralChat}
+          onclick={handleToggleEphemeral}
           class="rounded-lg p-1.5 transition-colors {currentConversation.ephemeral
             ? 'bg-amber-500/20 text-amber-300'
             : 'text-white/40 hover:text-white/70'}"
-          aria-label="Ephemeral Chat"
+          aria-label="Toggle Ephemeral Mode"
           title={currentConversation.ephemeral
-            ? 'In ephemeral mode (not saved)'
-            : 'New ephemeral chat (not saved)'}
+            ? 'Switch to normal mode (saved)'
+            : 'Switch to ephemeral mode (not saved)'}
         >
           <EyeOff class="h-4 w-4" />
         </button>
@@ -332,6 +421,8 @@
           {streamingContent}
           {errorMessage}
           ephemeral={currentConversation.ephemeral ?? false}
+          copyTextLabel={formatAccelerator(getBinding('captureText'))}
+          screenshotLabel={formatAccelerator(getBinding('captureScreen'))}
           onDismissError={dismissError}
           onQuickPrompt={(text) => (prefillText = text)}
         />

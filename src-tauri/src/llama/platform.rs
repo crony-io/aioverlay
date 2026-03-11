@@ -182,15 +182,17 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                     });
                 }
 
-                // AMD HIP
-                variants.push(LlamaVariant {
-                    id: "win-hip-radeon-x64".into(),
-                    label: "AMD Radeon (HIP/ROCm)".into(),
-                    gpu_type: "hip".into(),
-                    asset_names: vec![format!("llama-{tag}-bin-win-hip-radeon-x64.zip")],
-                    recommended: false,
-                    size_mb: 349,
-                });
+                // AMD HIP — only show when no NVIDIA GPU detected
+                if !gpu.has_nvidia {
+                    variants.push(LlamaVariant {
+                        id: "win-hip-radeon-x64".into(),
+                        label: "AMD Radeon (HIP/ROCm)".into(),
+                        gpu_type: "hip".into(),
+                        asset_names: vec![format!("llama-{tag}-bin-win-hip-radeon-x64.zip")],
+                        recommended: false,
+                        size_mb: 349,
+                    });
+                }
 
                 // CPU fallback
                 variants.push(LlamaVariant {

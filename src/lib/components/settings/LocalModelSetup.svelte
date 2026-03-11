@@ -8,6 +8,7 @@
   } from '$lib/services/local/llamaManager';
   import { onDownloadProgress } from '$lib/services/local/llamaDownloader';
   import { computePercent, formatStatus } from '$lib/utils/downloadProgress';
+  import { showError } from '$lib/stores/errorStore.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import DownloadProgressBar from '$lib/components/settings/DownloadProgressBar.svelte';
   import { Download, Trash2, BadgeCheck, BadgeAlert, Cpu, Loader } from 'lucide-svelte';
@@ -49,7 +50,7 @@
         selectedVariantId = recommended?.id ?? v[0]?.id ?? '';
       }
     } catch (e) {
-      console.error('Failed to load local model setup data:', e);
+      showError(e);
     }
   }
 
@@ -91,7 +92,7 @@
       await loadData();
       progress = null;
     } catch (e) {
-      console.error('Failed to delete installation:', e);
+      showError(e);
     } finally {
       isDeleting = false;
     }
@@ -185,16 +186,28 @@
     {/if}
 
     <!-- Download / reinstall button -->
-    <button
-      class="flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors"
-      style="background: var(--accent-primary); hover:background: var(--accent-primary-hover);"
-      class:opacity-50={!selectedVariantId}
-      disabled={!selectedVariantId}
-      onclick={handleDownload}
-    >
-      <Download class="h-4 w-4" />
-      {installStatus.installed ? 'Reinstall' : 'Download'} llama-server
-    </button>
+    {#if installStatus.installed}
+      <button
+        class="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/50 transition-colors hover:border-white/20 hover:text-white/70 hover:bg-white/5"
+        class:opacity-50={!selectedVariantId}
+        disabled={!selectedVariantId}
+        onclick={handleDownload}
+      >
+        <Download class="h-3.5 w-3.5" />
+        Reinstall llama-server
+      </button>
+    {:else}
+      <button
+        class="flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors"
+        style="background: var(--accent-primary);"
+        class:opacity-50={!selectedVariantId}
+        disabled={!selectedVariantId}
+        onclick={handleDownload}
+      >
+        <Download class="h-4 w-4" />
+        Download llama-server
+      </button>
+    {/if}
   {/if}
 
   <!-- Download progress -->

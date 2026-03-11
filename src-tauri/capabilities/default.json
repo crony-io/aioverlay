@@ -10,14 +10,26 @@
     "core:window:allow-close",
     "core:window:allow-set-always-on-top",
     "clipboard-manager:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
     "dialog:default",
     "fs:default",
+    "fs:allow-appdata-read-recursive",
+    "fs:allow-appdata-write-recursive",
     "os:default",
     "process:default",
     "stronghold:default",
+    "stronghold:allow-save",
+    "stronghold:allow-get-store-record",
+    "stronghold:allow-save-store-record",
+    "stronghold:allow-remove-store-record",
+    "stronghold:allow-initialize",
+    "stronghold:allow-create-client",
+    "stronghold:allow-load-client",
     "core:window:allow-hide",
     "core:window:allow-show",
     "core:window:allow-set-focus",
-    "core:window:allow-set-ignore-cursor-events"
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize"
   ]
 }

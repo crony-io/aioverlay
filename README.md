@@ -1,60 +1,103 @@
 # Ai Overlay
 
-Ai Overlay is an open-source, local-first desktop Tauri application that provides a AI assistant overlaid directly on your screen. Seamlessly capture screenshots or text and send them to your favorite AI models (Cloud-based or Local) using global keyboard shortcuts.
+Open-source desktop AI assistant that overlays your screen. Capture screenshots or text and send them to cloud or local AI models via global shortcuts.
 
-## 🌟 Key Features
+Built with **Tauri v2** (Rust) + **SvelteKit** (Svelte 5) + **TailwindCSS v4** + **TypeScript**.
 
-- **Glassmorphic UI**: A stunning, frosted-glass interface that floats over your workspace.
-- **Global Shortcuts**:
-  - `Ctrl + Shift + C`: Copy selected text and pre-fill the AI prompt.
-  - `Ctrl + Shift + S`: Freeze the screen to capture specific regions for vision analysis.
-- **App Shortcuts**:
-  - `Ctrl + N`: New conversation.
-  - `Ctrl + ,`: Toggle Settings.
-  - `Ctrl + H`: Toggle chat history.
-- **Multi-Provider Support**:
-  - **Cloud**: OpenAI, Anthropic, Gemini, and more providers soon.
-  - **Local**: `llama.cpp` runtime download with GPU variant auto-detection for running GGUF models completely offline.
-- **Modular Architecture**: Unified AI interface for seamless switching between local and cloud models without code duplication.
-- **Privacy First**: Securely store API keys using `Tauri Stronghold` (encrypted on-disk storage).
-- **Click-Through Mode**: Pin the assistant always-on-top and enable click-through so mouse events pass through to the app beneath.
+## Features
 
-## 🏗️ Architecture & Tech Stack
+- **Multi-provider AI** — OpenAI, Anthropic, Gemini (cloud) and llama.cpp (local, GPU auto-detection)
+- **Screen capture** — Freeze screen, select region, send to vision models
+- **Text capture** — Copy selected text from any app directly into the prompt
+- **Ephemeral chat** — Conversations that are never written to disk (toggleable)
+- **Encrypted storage** — API keys via Stronghold vault, chat history via AES-256-GCM
+- **Auto-updater** — In-app update notifications with download progress
+- **Glassmorphic UI** — Transparent, borderless window with frosted-glass theme
 
-- **Backend**: [Tauri v2](https://v2.tauri.app/) (Rust)
-- **Frontend**: [SvelteKit](https://kit.svelte.dev/) + [TailwindCSS](https://tailwindcss.com/)
-- **Local Inference**: [llama.cpp](https://github.com/ggml-org/llama.cpp) (runtime download with GPU variant auto-detection)
-- **Security**: `tauri-plugin-stronghold` for encrypted credential management.
-- **Automation**: `enigo` for key simulation and `xcap` for screen capture.
+## Shortcuts
 
-## 🚀 Installation & Development
+| Shortcut | Action                            | Type   |
+| -------- | --------------------------------- | ------ |
+| `Alt+C`  | Capture selected text into prompt | Global |
+| `Alt+S`  | Screenshot region selector        | Global |
+| `Alt+A`  | Show / restore window             | Global |
+| `Ctrl+N` | New conversation                  | App    |
+| `Ctrl+H` | Toggle chat history               | App    |
+| `Ctrl+,` | Toggle settings                   | App    |
 
-### Prerequisites
+**Global** shortcuts work system-wide (even when the app is not focused).  
+**App** shortcuts only work when the app window is focused.  
+All shortcuts are customizable in **Settings → Shortcuts**.
 
-- [Rust](https://www.rust-lang.org/tools/install)
-- [Node.js](https://nodejs.org/)
-- [Tauri CLI](https://v2.tauri.app/reference/cli/)
+## Prerequisites
 
-### Setup
+- [Rust](https://www.rust-lang.org/tools/install) (stable)
+- [Node.js](https://nodejs.org/) (v18+)
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/aioverlay.git
-   cd aioverlay
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Run in development mode:
-   ```bash
-   npm run tauri dev
-   ```
+## Setup
 
-## 🛡️ Security
+```bash
+git clone https://github.com/crony-io/aioverlay.git
+cd aioverlay
+npm install
+```
 
-This app uses **Tauri Stronghold** to store sensitive information. Your API keys never leave your device and are stored in an encrypted database managed by the OS user permissions.
+## Development
 
-## 📄 License
+```bash
+npm run tauri dev
+```
 
-MIT License. See [LICENSE](LICENSE) for more details.
+## Build
+
+```bash
+npm run tauri build
+```
+
+Release binaries are output to `src-tauri/target/release/bundle/`.
+
+## Lint & Check
+
+```bash
+npm run lint        # ESLint
+npm run check       # svelte-check (TypeScript)
+npm run format      # Prettier
+```
+
+## Project Structure
+
+```
+src/                        # SvelteKit frontend
+├── routes/                 # Single SPA page (+page.svelte)
+├── lib/
+│   ├── components/         # Reusable Svelte 5 components
+│   ├── services/
+│   │   ├── ai/             # Provider abstraction (OpenAI, Anthropic, Gemini, Local)
+│   │   ├── local/          # llama.cpp server & model management
+│   │   ├── shortcuts/      # Global shortcut registration
+│   │   ├── updater/        # Auto-update service
+│   │   ├── markdown/       # Marked + Shiki renderer
+│   │   └── crypto/         # AES-256-GCM chat encryption
+│   ├── stores/             # Chat state & AI streaming
+│   └── utils/              # Shared utilities
+src-tauri/                  # Rust backend
+├── src/
+│   ├── lib.rs              # Plugin registration & command handlers
+│   ├── ai_proxy.rs         # Secure HTTP proxy (keys never leave Rust)
+│   ├── capture.rs          # Screen capture (xcap)
+│   ├── input.rs            # Key simulation (enigo)
+│   └── llama/              # Local inference (download, process, models, platform)
+├── capabilities/           # Tauri permission configs
+└── Cargo.toml
+```
+
+## Security
+
+- **API keys** are stored in a Stronghold encrypted vault — never exposed to the webview or network inspector
+- **Chat history** is encrypted at rest with AES-256-GCM using a per-install derived key
+- **AI requests** route through a Rust HTTP proxy; keys are injected server-side
+- **CSP** restricts the webview to `self` and local llama-server addresses only
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -170,18 +170,25 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="fixed inset-0 z-9999 cursor-crosshair select-none"
-  onmousedown={handleMouseDown}
-  onmousemove={handleMouseMove}
-  onmouseup={handleMouseUp}
+  role="dialog"
+  aria-label="Screenshot region selector"
+  tabindex="-1"
 >
-  <canvas bind:this={canvasEl} class="h-full w-full"></canvas>
+  <canvas
+    bind:this={canvasEl}
+    class="h-full w-full"
+    onmousedown={handleMouseDown}
+    onmousemove={handleMouseMove}
+    onmouseup={handleMouseUp}
+  ></canvas>
 
   <!-- Action buttons -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-white/10 bg-black/70 px-4 py-2 backdrop-blur-md"
+    onmousedown={(e) => e.stopPropagation()}
   >
     <button
       onclick={onCancel}

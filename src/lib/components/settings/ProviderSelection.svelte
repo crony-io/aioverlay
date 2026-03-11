@@ -1,19 +1,54 @@
 <script lang="ts">
   import type { AIProviderID, AIModelOption } from '$lib/services/ai/types';
+  import type { DownloadedModel } from '$lib/services/local/types';
   import { getModelsForProvider } from '$lib/services/ai/registry';
+  import { listDownloadedModels } from '$lib/services/local/modelManager';
+  import { settingsStore } from '$lib/stores/settingsStore.svelte';
   import { Globe, Info } from 'lucide-svelte';
+
+  /** Determine if a downloaded model supports vision from HF metadata */
+  function modelHasVision(m: DownloadedModel): boolean {
+    if (m.pipelineTag === 'image-text-to-text') return true;
+    if (m.pipelineTag === 'image-to-text') return true;
+    if (m.tags?.some((t) => t === 'vision' || t === 'image-text-to-text')) return true;
+    return false;
+  }
 
   let {
     activeProvider = $bindable(),
     activeModel = $bindable(),
-    webSearchEnabled = $bindable()
+    webSearchEnabled = $bindable(),
+    refreshKey = 0
   } = $props<{
     activeProvider: AIProviderID;
     activeModel: string;
     webSearchEnabled: boolean;
+    refreshKey?: number;
   }>();
 
-  let availableModels = $derived<AIModelOption[]>(getModelsForProvider(activeProvider));
+  /** Downloaded local models fetched from the Rust backend */
+  let localModels = $state<AIModelOption[]>([]);
+
+  /** Fetch downloaded models when local provider is selected or models change */
+  $effect(() => {
+    void refreshKey;
+    if (activeProvider === 'local') {
+      listDownloadedModels().then((models) => {
+        localModels = models.map((m) => ({
+          id: m.filePath,
+          label: m.filename,
+          contextWindow: 0,
+          supportsVision: modelHasVision(m)
+        }));
+      });
+    }
+  });
+
+  let availableModels = $derived<AIModelOption[]>(
+    activeProvider === 'local' && localModels.length > 0
+      ? localModels
+      : getModelsForProvider(activeProvider)
+  );
   let selectedModel = $derived(availableModels.find((m) => m.id === activeModel));
   let modelSupportsSearch = $derived(selectedModel?.supportsWebSearch ?? false);
   let showSearchInfo = $state(false);
@@ -31,6 +66,11 @@
     if (!modelSupportsSearch && webSearchEnabled) {
       webSearchEnabled = false;
     }
+  });
+
+  /** Sync vision support to the global store so other components can check it */
+  $effect(() => {
+    settingsStore.activeModelSupportsVision = selectedModel?.supportsVision ?? false;
   });
 </script>
 
@@ -62,7 +102,7 @@
         </option>
       {/each}
     </select>
-    {#if selectedModel}
+    {#if selectedModel && activeProvider !== 'local'}
       <div class="flex items-center gap-2 text-[10px] text-white/30">
         <span>Context: {(selectedModel.contextWindow / 1000).toFixed(0)}k</span>
         <span class="text-white/15">·</span>
@@ -71,6 +111,10 @@
         <span class={selectedModel.supportsWebSearch ? 'text-emerald-400/60' : 'text-white/20'}>
           Search: {selectedModel.supportsWebSearch ? 'Yes' : 'No'}
         </span>
+      </div>
+    {:else if selectedModel && activeProvider === 'local'}
+      <div class="flex items-center gap-2 text-[10px] text-white/30">
+        <span>Vision: {selectedModel.supportsVision ? 'Yes' : 'No'}</span>
       </div>
     {/if}
   </div>

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { showError } from '$lib/stores/errorStore.svelte';
 
 // ---------------------------------------------------------------------------
 // Types matching the Rust StreamEvent / StreamRequest structs
@@ -82,7 +83,7 @@ export function streamViaRust(
     result,
     handle: {
       abort: () => {
-        invoke('cancel_ai_stream', { requestId }).catch(() => {});
+        invoke('cancel_ai_stream', { requestId }).catch((e) => showError(e));
         unlisten?.();
       }
     }

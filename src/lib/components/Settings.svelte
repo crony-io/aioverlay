@@ -1,7 +1,8 @@
 <script lang="ts">
   import { saveApiKey, getApiKey, removeApiKey } from '$lib/storage';
-  import type { AIProviderID } from '$lib/services/ai/types';
-  import { registerShortcuts } from '$lib/services/shortcuts/shortcutManager';
+  import { settingsStore } from '$lib/stores/settingsStore.svelte';
+  import { showError } from '$lib/stores/errorStore.svelte';
+  import { getAllBindings, type ShortcutAction } from '$lib/services/shortcuts/shortcutManager';
   import SettingsSection from '$lib/components/settings/SettingsSection.svelte';
   import ProviderSelection from '$lib/components/settings/ProviderSelection.svelte';
   import ApiKeysList from '$lib/components/settings/ApiKeysList.svelte';
@@ -15,20 +16,19 @@
   let anthropicKey = $state('');
   let geminiKey = $state('');
 
-  let screenshotKey = $state('CommandOrControl+Shift+S');
-  let copyKey = $state('CommandOrControl+Shift+C');
-  let activeProvider = $state<AIProviderID>('openai');
-  let activeModel = $state('');
-  let systemPrompt = $state('');
-  let webSearchEnabled = $state(false);
+  /** Bind to the reactive store so changes propagate to ChatStatusBar, chatStore, etc. */
+  let activeProvider = $state(settingsStore.activeProvider);
+  let activeModel = $state(settingsStore.activeModel);
+  let systemPrompt = $state(settingsStore.systemPrompt);
+  let webSearchEnabled = $state(settingsStore.webSearchEnabled);
+  let shortcutBindings = $state<Record<ShortcutAction, string>>(getAllBindings());
 
   let savedStatus = $state('');
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   let isLoaded = $state(false);
 
-  /** Track previous shortcut values to avoid unnecessary re-registration */
-  let prevCopyKey = '';
-  let prevScreenshotKey = '';
+  /** Incremented when models are downloaded/deleted to trigger ServerControls refresh */
+  let modelRefreshKey = $state(0);
 
   async function loadSettings() {
     try {
@@ -36,17 +36,14 @@
       anthropicKey = (await getApiKey('anthropic')) || '';
       geminiKey = (await getApiKey('gemini')) || '';
 
-      screenshotKey = localStorage.getItem('screenshotKey') || 'CommandOrControl+Shift+S';
-      copyKey = localStorage.getItem('copyKey') || 'CommandOrControl+Shift+C';
-      activeProvider = (localStorage.getItem('activeProvider') as AIProviderID) || 'openai';
-      activeModel = localStorage.getItem('activeModel') || '';
-      systemPrompt = localStorage.getItem('systemPrompt') || '';
-      webSearchEnabled = localStorage.getItem('webSearchEnabled') === 'true';
-      prevCopyKey = copyKey;
-      prevScreenshotKey = screenshotKey;
+      activeProvider = settingsStore.activeProvider;
+      activeModel = settingsStore.activeModel;
+      systemPrompt = settingsStore.systemPrompt;
+      webSearchEnabled = settingsStore.webSearchEnabled;
+      shortcutBindings = getAllBindings();
       isLoaded = true;
     } catch (e) {
-      console.error('Failed to load settings:', e);
+      showError(e);
     }
   }
 
@@ -59,7 +56,6 @@
 
   async function performSave() {
     try {
-      // Save or remove API keys based on whether they have a value
       if (openAiKey) await saveApiKey('openai', openAiKey);
       else await removeApiKey('openai');
 
@@ -69,24 +65,11 @@
       if (geminiKey) await saveApiKey('gemini', geminiKey);
       else await removeApiKey('gemini');
 
-      localStorage.setItem('screenshotKey', screenshotKey);
-      localStorage.setItem('copyKey', copyKey);
-      localStorage.setItem('activeProvider', activeProvider);
-      localStorage.setItem('activeModel', activeModel);
-      localStorage.setItem('systemPrompt', systemPrompt);
-      localStorage.setItem('webSearchEnabled', String(webSearchEnabled));
-      // Only re-register shortcuts when bindings actually changed
-      if (copyKey !== prevCopyKey || screenshotKey !== prevScreenshotKey) {
-        await registerShortcuts();
-        prevCopyKey = copyKey;
-        prevScreenshotKey = screenshotKey;
-      }
-
       savedStatus = 'Saved ✓';
       setTimeout(() => (savedStatus = ''), 2000);
     } catch (e) {
-      console.error('Failed to save settings:', e);
       savedStatus = 'Error saving!';
+      showError(e);
     }
   }
 
@@ -95,18 +78,19 @@
     loadSettings();
   });
 
-  // Reactive auto-save when any value changes
   $effect(() => {
-    // Read all reactive values to subscribe
+    if (!isLoaded) return;
+    settingsStore.activeProvider = activeProvider;
+    settingsStore.activeModel = activeModel;
+    settingsStore.systemPrompt = systemPrompt;
+    settingsStore.webSearchEnabled = webSearchEnabled;
+  });
+
+  // Debounced auto-save for API keys (async Stronghold operations)
+  $effect(() => {
     void openAiKey;
     void anthropicKey;
     void geminiKey;
-    void screenshotKey;
-    void copyKey;
-    void activeProvider;
-    void activeModel;
-    void systemPrompt;
-    void webSearchEnabled;
 
     scheduleSave();
   });
@@ -114,7 +98,12 @@
 
 <div class="flex flex-col gap-1 overflow-y-auto pr-2 custom-scrollbar" style="max-height: 380px;">
   <SettingsSection title="AI Provider & Model" defaultOpen={true}>
-    <ProviderSelection bind:activeProvider bind:activeModel bind:webSearchEnabled />
+    <ProviderSelection
+      bind:activeProvider
+      bind:activeModel
+      bind:webSearchEnabled
+      refreshKey={modelRefreshKey}
+    />
   </SettingsSection>
 
   <SettingsSection title="API Keys" defaultOpen={true}>
@@ -127,12 +116,15 @@
 
   <SettingsSection title="Local Inference" defaultOpen={false}>
     <LocalModelSetup />
-    <ModelDownloader />
-    <ServerControls />
+    <ModelDownloader onModelsChanged={() => modelRefreshKey++} />
+    <ServerControls
+      activeModel={activeProvider === 'local' ? activeModel : ''}
+      refreshKey={modelRefreshKey}
+    />
   </SettingsSection>
 
   <SettingsSection title="Shortcuts" defaultOpen={false}>
-    <GlobalShortcuts bind:copyKey bind:screenshotKey />
+    <GlobalShortcuts bind:bindings={shortcutBindings} />
   </SettingsSection>
 </div>
 
