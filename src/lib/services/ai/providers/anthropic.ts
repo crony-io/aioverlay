@@ -8,10 +8,8 @@ import type {
   AIStreamHandle
 } from '$lib/services/ai/types';
 import { toAnthropicMessage } from '$lib/services/ai/messageUtils';
-import { sanitizeApiError } from '$lib/services/ai/utils/sseParser';
-
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_API_VERSION = '2023-06-01';
+import { parseAnthropicLine } from '$lib/services/ai/utils/sseParser';
+import { streamSSE } from '$lib/services/ai/utils/streamSSE';
 
 const ANTHROPIC_MODELS: AIModelOption[] = [
   {
@@ -44,20 +42,6 @@ const ANTHROPIC_MODELS: AIModelOption[] = [
   }
 ];
 
-/** Parse an SSE event from Anthropic's streaming response */
-function parseSSEEvent(line: string): { type: string; data: Record<string, unknown> } | null {
-  if (!line.startsWith('data: ')) return null;
-
-  const data = line.slice(6).trim();
-  if (!data) return null;
-
-  try {
-    return JSON.parse(data);
-  } catch {
-    return null;
-  }
-}
-
 export const anthropicProvider: AIProvider = {
   id: 'anthropic',
   label: 'Anthropic',
@@ -68,8 +52,6 @@ export const anthropicProvider: AIProvider = {
     config: AIRequestConfig,
     onChunk: StreamChunkCallback
   ): { result: Promise<AIStreamResult>; handle: AIStreamHandle } {
-    const controller = new AbortController();
-
     const filteredMessages = messages.filter((m) => m.role !== 'system');
 
     const body: Record<string, unknown> = {
@@ -89,74 +71,10 @@ export const anthropicProvider: AIProvider = {
       body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
     }
 
-    const result = (async (): Promise<AIStreamResult> => {
-      const response = await fetch(ANTHROPIC_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': config.apiKey,
-          'anthropic-version': ANTHROPIC_API_VERSION,
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(sanitizeApiError('Anthropic', response.status, errorBody));
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body from Anthropic');
-
-      const decoder = new TextDecoder();
-      let fullContent = '';
-      let buffer = '';
-      let finishReason: string | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const event = parseSSEEvent(line);
-          if (!event) continue;
-
-          const eventType = (event as Record<string, unknown>).type as string;
-
-          if (eventType === 'content_block_delta') {
-            const delta = (event as Record<string, unknown>).delta as
-              | Record<string, unknown>
-              | undefined;
-            if (delta?.type === 'text_delta') {
-              const text = delta.text as string;
-              fullContent += text;
-              onChunk(text);
-            }
-          } else if (eventType === 'message_delta') {
-            const delta = (event as Record<string, unknown>).delta as
-              | Record<string, unknown>
-              | undefined;
-            finishReason = (delta?.stop_reason as string) ?? null;
-          }
-        }
-      }
-
-      return {
-        content: fullContent,
-        model: config.model,
-        finishReason
-      };
-    })();
-
-    return {
-      result,
-      handle: { abort: () => controller.abort() }
-    };
+    return streamSSE(
+      { provider: 'anthropic', model: config.model, body: JSON.stringify(body) },
+      parseAnthropicLine,
+      onChunk
+    );
   }
 };

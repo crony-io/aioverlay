@@ -1,19 +1,20 @@
 <script lang="ts">
-  import { Send, Square } from 'lucide-svelte';
+  import { Send, Square, Timer } from 'lucide-svelte';
   import AttachmentPreview from '$lib/components/AttachmentPreview.svelte';
 
   let {
     onSubmit,
-    disabled = false,
     isStreaming = false,
     onStop,
+    pendingMessages = 0,
     prefillText = $bindable(''),
     attachedImage = $bindable('')
   } = $props<{
     onSubmit: (text: string) => void;
-    disabled?: boolean;
     isStreaming?: boolean;
     onStop?: () => void;
+    /** Number of messages waiting in the debounce buffer */
+    pendingMessages?: number;
     prefillText?: string;
     /** Base64 image data (without data URI prefix) attached via screenshot */
     attachedImage?: string;
@@ -35,7 +36,7 @@
   function handleSubmit() {
     const hasText = inputText.trim().length > 0;
     const hasImage = attachedImage.length > 0;
-    if ((!hasText && !hasImage) || disabled) return;
+    if (!hasText && !hasImage) return;
 
     let finalText = inputText.trim();
     if (hasImage) {
@@ -77,14 +78,26 @@
     <AttachmentPreview imageData={attachedImage} onRemove={() => (attachedImage = '')} />
   {/if}
 
+  {#if pendingMessages > 0}
+    <div class="flex items-center gap-1.5 px-2 py-1 text-[10px] text-amber-300/70 animate-pulse">
+      <Timer class="h-3 w-3" />
+      <span
+        >Batching {pendingMessages} message{pendingMessages > 1 ? 's' : ''}… sending shortly</span
+      >
+    </div>
+  {/if}
+
   <div class="flex gap-3 relative">
     <textarea
       bind:this={textareaEl}
       bind:value={inputText}
       onkeydown={handleKeydown}
       oninput={handleInput}
-      {disabled}
-      placeholder={disabled ? 'Waiting for response...' : 'Ask Ai Overlay... (Enter to send)'}
+      placeholder={isStreaming
+        ? 'Type to queue next message...'
+        : pendingMessages > 0
+          ? `Batching ${pendingMessages} message${pendingMessages > 1 ? 's' : ''}...`
+          : 'Ask Ai Overlay... (Enter to send)'}
       rows="1"
       class="w-full resize-none rounded-xl border py-3 pl-4 pr-12 text-sm text-white shadow-inner focus:outline-none focus:ring-1 custom-scrollbar disabled:opacity-50 disabled:cursor-not-allowed"
       style="
@@ -111,7 +124,7 @@
     {:else}
       <button
         onclick={handleSubmit}
-        disabled={(!inputText.trim() && !attachedImage) || disabled}
+        disabled={!inputText.trim() && !attachedImage}
         class="absolute right-2 top-2 bottom-2 rounded-lg px-3 py-1 font-semibold text-white shadow-lg focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
         style="
         background: var(--accent-primary);

@@ -17,7 +17,9 @@
     clearActiveModel,
     formatFileSize
   } from '$lib/services/local/modelManager';
+  import { computePercent, formatStatus } from '$lib/utils/downloadProgress';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import DownloadProgressBar from '$lib/components/settings/DownloadProgressBar.svelte';
   import {
     Search,
     Download,
@@ -58,23 +60,8 @@
   // Derived
   // ---------------------------------------------------------------------------
 
-  let downloadPercent = $derived(
-    progress && progress.totalBytes > 0
-      ? Math.round((progress.bytesDownloaded / progress.totalBytes) * 100)
-      : 0
-  );
-
-  let downloadStatus = $derived.by(() => {
-    if (!progress) return '';
-    if (progress.phase === 'downloading') {
-      const mbDown = (progress.bytesDownloaded / 1024 / 1024).toFixed(1);
-      const mbTotal = (progress.totalBytes / 1024 / 1024).toFixed(1);
-      return `Downloading: ${mbDown} / ${mbTotal} MB`;
-    }
-    if (progress.phase === 'complete') return 'Download complete!';
-    if (progress.phase === 'error') return progress.error ?? 'Download failed';
-    return '';
-  });
+  let downloadPercent = $derived(computePercent(progress));
+  let downloadStatus = $derived(formatStatus(progress));
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -227,7 +214,7 @@
         <div
           class="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors {isActive
             ? 'border-indigo-500/30 bg-indigo-500/5'
-            : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.04]'}"
+            : 'border-white/5 bg-white/2 hover:bg-white/4'}"
         >
           <button
             class="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -290,10 +277,10 @@
     <div class="flex flex-col gap-1 max-h-56 overflow-y-auto custom-scrollbar">
       {#each searchResults as result (result.id)}
         {@const isExpanded = expandedRepoId === result.id}
-        <div class="rounded-lg border border-white/5 bg-white/[0.02]">
+        <div class="rounded-lg border border-white/5 bg-white/2">
           <!-- Result header -->
           <button
-            class="flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-white/[0.04]"
+            class="flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-white/4"
             onclick={() => toggleRepoFiles(result.id)}
           >
             <div class="flex flex-col min-w-0 flex-1">
@@ -366,19 +353,11 @@
 
   <!-- Download progress -->
   {#if downloadingFile && progress}
-    <div class="flex flex-col gap-1.5">
-      <div class="flex items-center gap-2 text-[10px] text-white/40">
-        <Loader class="h-3 w-3 animate-spin" />
-        <span class="truncate">{downloadingFile}</span>
-      </div>
-      <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-        <div
-          class="h-full rounded-full transition-all duration-200"
-          style="width: {downloadPercent}%; background: var(--accent-primary);"
-        ></div>
-      </div>
-      <span class="text-[10px] text-white/30">{downloadStatus}</span>
-    </div>
+    <DownloadProgressBar
+      percent={downloadPercent}
+      status={downloadStatus}
+      label={downloadingFile}
+    />
   {/if}
 
   <!-- Download error -->

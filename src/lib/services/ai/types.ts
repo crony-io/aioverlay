@@ -14,7 +14,6 @@ export interface AIModelOption {
 
 /** Configuration needed to make an AI request */
 export interface AIRequestConfig {
-  apiKey: string;
   model: string;
   systemPrompt?: string;
   temperature?: number;

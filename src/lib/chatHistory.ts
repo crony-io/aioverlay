@@ -1,12 +1,14 @@
 import {
   mkdir,
   readTextFile,
-  writeTextFile,
+  readFile,
+  writeFile,
   remove,
   exists,
   BaseDirectory
 } from '@tauri-apps/plugin-fs';
 import type { Conversation, ConversationMeta, ChatMessage } from '$lib/types';
+import { encryptString, tryDecrypt } from '$lib/services/crypto/chatEncryption';
 
 const CONVERSATIONS_DIR = 'conversations';
 const INDEX_FILE = `${CONVERSATIONS_DIR}/index.json`;
@@ -19,6 +21,55 @@ async function ensureDir(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Encrypted read / write helpers with automatic plaintext migration
+// ---------------------------------------------------------------------------
+
+/**
+ * Write an encrypted file. The data is AES-256-GCM encrypted before
+ * being written as binary.
+ */
+async function writeEncrypted(path: string, json: string): Promise<void> {
+  const encrypted = await encryptString(json);
+  await writeFile(path, encrypted, { baseDir: BaseDirectory.AppData });
+}
+
+/**
+ * Read a file that may be encrypted or plaintext JSON.
+ * - First tries binary read + AES-GCM decrypt.
+ * - Falls back to plaintext read (pre-encryption migration).
+ * - If plaintext succeeds, re-saves as encrypted (auto-migrate).
+ */
+async function readEncrypted(path: string): Promise<string | null> {
+  try {
+    const binary = await readFile(path, { baseDir: BaseDirectory.AppData });
+    const decrypted = await tryDecrypt(binary);
+    if (decrypted !== null) return decrypted;
+  } catch {
+    // Binary read failed — try text
+  }
+
+  // Fallback: plaintext JSON (legacy / pre-encryption)
+  try {
+    const text = await readTextFile(path, { baseDir: BaseDirectory.AppData });
+    // Validate it's actually JSON before returning
+    JSON.parse(text);
+    // Auto-migrate: re-write as encrypted
+    try {
+      await writeEncrypted(path, text);
+    } catch {
+      // Migration write failed — non-critical, will try again next save
+    }
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /** Load the conversation index (list of metadata) */
 export async function loadConversationList(): Promise<ConversationMeta[]> {
   await ensureDir();
@@ -27,7 +78,8 @@ export async function loadConversationList(): Promise<ConversationMeta[]> {
   if (!indexExists) return [];
 
   try {
-    const raw = await readTextFile(INDEX_FILE, { baseDir: BaseDirectory.AppData });
+    const raw = await readEncrypted(INDEX_FILE);
+    if (!raw) return [];
     return JSON.parse(raw) as ConversationMeta[];
   } catch {
     return [];
@@ -37,9 +89,7 @@ export async function loadConversationList(): Promise<ConversationMeta[]> {
 /** Save the conversation index */
 async function saveIndex(index: ConversationMeta[]): Promise<void> {
   await ensureDir();
-  await writeTextFile(INDEX_FILE, JSON.stringify(index, null, 2), {
-    baseDir: BaseDirectory.AppData
-  });
+  await writeEncrypted(INDEX_FILE, JSON.stringify(index));
 }
 
 /** Load a full conversation by ID */
@@ -50,7 +100,8 @@ export async function loadConversation(id: string): Promise<Conversation | null>
     const fileExists = await exists(filePath, { baseDir: BaseDirectory.AppData });
     if (!fileExists) return null;
 
-    const raw = await readTextFile(filePath, { baseDir: BaseDirectory.AppData });
+    const raw = await readEncrypted(filePath);
+    if (!raw) return null;
     return JSON.parse(raw) as Conversation;
   } catch {
     return null;
@@ -64,9 +115,7 @@ export async function saveConversation(conversation: Conversation): Promise<void
   const filePath = `${CONVERSATIONS_DIR}/${conversation.id}.json`;
   conversation.updatedAt = Date.now();
 
-  await writeTextFile(filePath, JSON.stringify(conversation, null, 2), {
-    baseDir: BaseDirectory.AppData
-  });
+  await writeEncrypted(filePath, JSON.stringify(conversation));
 
   // Update the index
   const index = await loadConversationList();
@@ -115,6 +164,19 @@ export function createConversation(): Conversation {
     createdAt: now,
     updatedAt: now,
     messages: []
+  };
+}
+
+/** Create a new ephemeral conversation (not persisted to disk) */
+export function createEphemeralConversation(): Conversation {
+  const now = Date.now();
+  return {
+    id: crypto.randomUUID(),
+    title: 'Ephemeral Chat',
+    createdAt: now,
+    updatedAt: now,
+    messages: [],
+    ephemeral: true
   };
 }
 

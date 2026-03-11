@@ -1,6 +1,7 @@
 import { Stronghold } from '@tauri-apps/plugin-stronghold';
 import type { Store, Client } from '@tauri-apps/plugin-stronghold';
 import { exists, readTextFile, writeTextFile, remove, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { storeProviderKey } from '$lib/services/ai/rustProxy';
 
 /** Secure vault path (new per-install encrypted vault) */
 const VAULT_PATH = 'keys.vault';
@@ -28,7 +29,7 @@ let storeInstance: Store | null = null;
  * Each installation gets a unique 32-byte hex salt so the vault password
  * is never a hard-coded constant shared across installs.
  */
-async function getOrCreateSalt(): Promise<string> {
+export async function getOrCreateSalt(): Promise<string> {
   try {
     const saltExists = await exists(SALT_FILE, { baseDir: BaseDirectory.AppData });
     if (saltExists) {
@@ -179,6 +180,8 @@ export async function saveApiKey(provider: string, key: string): Promise<void> {
   const bytes = Array.from(new TextEncoder().encode(key));
   await store.insert(provider, bytes);
   await strongholdInstance?.save();
+  // Sync to Rust's in-memory SecureKeyStore so HTTP proxy can use it
+  await storeProviderKey(provider, key);
 }
 
 export async function getApiKey(provider: string): Promise<string | null> {
@@ -196,4 +199,21 @@ export async function removeApiKey(provider: string): Promise<void> {
   const store = await initStorage();
   await store.remove(provider);
   await strongholdInstance?.save();
+  // Remove from Rust's in-memory SecureKeyStore
+  await storeProviderKey(provider, '');
+}
+
+/**
+ * Load all stored API keys from Stronghold and push them into
+ * Rust's in-memory SecureKeyStore. Must be called once on app startup
+ * so the Rust HTTP proxy can authenticate requests.
+ */
+export async function initSecureStore(): Promise<void> {
+  const providers = ['openai', 'anthropic', 'gemini'] as const;
+  for (const provider of providers) {
+    const key = await getApiKey(provider);
+    if (key) {
+      await storeProviderKey(provider, key);
+    }
+  }
 }

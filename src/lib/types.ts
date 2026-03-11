@@ -28,4 +28,6 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
+  /** When true, conversation is not persisted to disk */
+  ephemeral?: boolean;
 }

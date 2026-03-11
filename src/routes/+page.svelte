@@ -4,10 +4,13 @@
     loadConversationList,
     loadConversation,
     deleteConversation,
-    createConversation
+    createConversation,
+    createEphemeralConversation
   } from '$lib/chatHistory';
   import { sendMessageAndStream } from '$lib/stores/chatStore';
   import type { AIStreamHandle } from '$lib/services/ai/types';
+  import { createMessageDebounce } from '$lib/utils/messageDebounce';
+  import { initSecureStore } from '$lib/storage';
   import {
     registerShortcuts,
     onShortcutAction,
@@ -21,7 +24,7 @@
   import Settings from '$lib/components/Settings.svelte';
   import ScreenshotOverlay from '$lib/components/ScreenshotOverlay.svelte';
   import ChatStatusBar from '$lib/components/ChatStatusBar.svelte';
-  import { Clock } from 'lucide-svelte';
+  import { Clock, EyeOff } from 'lucide-svelte';
 
   let activeTab = $state<'chat' | 'settings'>('chat');
   let isLoading = $state(false);
@@ -32,6 +35,12 @@
 
   /** Pre-fill text for ChatInput (U3: captured text goes here instead of auto-sending) */
   let prefillText = $state('');
+
+  /** Number of messages waiting in the debounce buffer */
+  let pendingMessages = $state(0);
+
+  /** Queued combined message to send after current stream completes */
+  let queuedMessage = $state('');
 
   /** Base64 image data for screenshot attachment preview (U2) */
   let attachedImage = $state('');
@@ -46,11 +55,14 @@
   /** Shortcut to current messages */
   let messages = $derived(currentConversation.messages);
 
-  /** Load conversations and register global shortcuts on mount */
+  /** Load conversations, init secure key store, and register global shortcuts on mount */
   $effect(() => {
     loadConversationList().then((list) => {
       conversations = list;
     });
+
+    // Push stored API keys into Rust's SecureKeyStore so the HTTP proxy can authenticate
+    initSecureStore();
 
     onShortcutAction((action, payload) => {
       activeTab = 'chat';
@@ -89,6 +101,7 @@
 
     return () => {
       cleanupShortcuts();
+      messageDebounce.destroy();
       window.removeEventListener('keydown', handleKeyboard);
     };
   });
@@ -98,9 +111,9 @@
     errorMessage = '';
   }
 
-  /** Handle sending a new message */
-  async function handleMessageSubmit(text: string) {
-    if (!text || isLoading) return;
+  /** Send a combined message to the AI (called by debounce flush or queue drain) */
+  async function dispatchToAI(text: string) {
+    if (!text) return;
 
     isLoading = true;
     errorMessage = '';
@@ -111,7 +124,7 @@
       userText: text,
       onConversationUpdate: (conv) => {
         currentConversation = { ...conv };
-        loadConversationList().then((list) => (conversations = list));
+        if (!conv.ephemeral) loadConversationList().then((list) => (conversations = list));
       },
       onStreamChunk: (fullContent) => {
         streamingContent = fullContent;
@@ -121,7 +134,14 @@
         streamingContent = '';
         isLoading = false;
         currentStreamHandle = null;
-        loadConversationList().then((list) => (conversations = list));
+        if (!conv.ephemeral) loadConversationList().then((list) => (conversations = list));
+
+        // Auto-send queued messages that arrived while AI was busy
+        if (queuedMessage) {
+          const queued = queuedMessage;
+          queuedMessage = '';
+          dispatchToAI(queued);
+        }
       },
       onError: (error) => {
         errorMessage = error;
@@ -134,6 +154,28 @@
     currentStreamHandle = handle;
   }
 
+  /** Debounce handle — batches rapid-fire messages before sending to AI */
+  const messageDebounce = createMessageDebounce({
+    onFlush: (combinedText) => {
+      if (isLoading) {
+        // AI is busy — queue for after current stream completes
+        queuedMessage = queuedMessage ? `${queuedMessage}\n${combinedText}` : combinedText;
+      } else {
+        dispatchToAI(combinedText);
+      }
+    },
+    onPendingChange: (count) => {
+      pendingMessages = count;
+    },
+    delayMs: 2000
+  });
+
+  /** Handle user message — enqueues into debounce buffer */
+  function handleMessageSubmit(text: string) {
+    if (!text) return;
+    messageDebounce.enqueue(text);
+  }
+
   /** Stop the current AI stream */
   function handleStopStream() {
     currentStreamHandle?.abort();
@@ -144,13 +186,26 @@
   /** Start a new conversation */
   function handleNewChat() {
     if (currentStreamHandle) handleStopStream();
+    messageDebounce.cancel();
+    queuedMessage = '';
     currentConversation = createConversation();
+    showHistory = false;
+  }
+
+  /** Start an ephemeral conversation (not persisted to disk) */
+  function handleNewEphemeralChat() {
+    if (currentStreamHandle) handleStopStream();
+    messageDebounce.cancel();
+    queuedMessage = '';
+    currentConversation = createEphemeralConversation();
     showHistory = false;
   }
 
   /** Select an existing conversation */
   async function handleSelectConversation(id: string) {
     if (currentStreamHandle) handleStopStream();
+    messageDebounce.cancel();
+    queuedMessage = '';
     const conv = await loadConversation(id);
     if (conv) {
       currentConversation = conv;
@@ -225,8 +280,20 @@
       <!-- Spacer -->
       <div class="flex-1"></div>
 
-      <!-- History toggle (only on chat tab) -->
+      <!-- Chat tab actions -->
       {#if activeTab === 'chat'}
+        <button
+          onclick={handleNewEphemeralChat}
+          class="rounded-lg p-1.5 transition-colors {currentConversation.ephemeral
+            ? 'bg-amber-500/20 text-amber-300'
+            : 'text-white/40 hover:text-white/70'}"
+          aria-label="Ephemeral Chat"
+          title={currentConversation.ephemeral
+            ? 'In ephemeral mode (not saved)'
+            : 'New ephemeral chat (not saved)'}
+        >
+          <EyeOff class="h-4 w-4" />
+        </button>
         <button
           class="rounded-lg p-1.5 transition-colors {showHistory
             ? 'bg-white/10 text-white'
@@ -264,6 +331,7 @@
           {isLoading}
           {streamingContent}
           {errorMessage}
+          ephemeral={currentConversation.ephemeral ?? false}
           onDismissError={dismissError}
           onQuickPrompt={(text) => (prefillText = text)}
         />
@@ -272,9 +340,9 @@
           <ChatStatusBar />
           <ChatInput
             onSubmit={handleMessageSubmit}
-            disabled={isLoading}
             isStreaming={!!currentStreamHandle}
             onStop={handleStopStream}
+            {pendingMessages}
             bind:prefillText
             bind:attachedImage
           />

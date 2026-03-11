@@ -7,7 +7,9 @@
     deleteLlamaInstallation
   } from '$lib/services/local/llamaManager';
   import { onDownloadProgress } from '$lib/services/local/llamaDownloader';
+  import { computePercent, formatStatus } from '$lib/utils/downloadProgress';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import DownloadProgressBar from '$lib/components/settings/DownloadProgressBar.svelte';
   import { Download, Trash2, BadgeCheck, BadgeAlert, Cpu, Loader } from 'lucide-svelte';
 
   let variants = $state<LlamaVariant[]>([]);
@@ -25,30 +27,8 @@
   let downloadError = $state('');
 
   let progress = $state<DownloadProgress | null>(null);
-
-  /** Computed: overall download percentage */
-  let downloadPercent = $derived(
-    progress && progress.totalBytes > 0
-      ? Math.round((progress.bytesDownloaded / progress.totalBytes) * 100)
-      : 0
-  );
-
-  /** Computed: human-readable download status */
-  let downloadStatus = $derived.by(() => {
-    if (!progress) return '';
-    if (progress.phase === 'downloading') {
-      const mbDown = (progress.bytesDownloaded / 1024 / 1024).toFixed(1);
-      const mbTotal = (progress.totalBytes / 1024 / 1024).toFixed(1);
-      const assetLabel =
-        progress.totalAssets > 1 ? ` (${progress.assetIndex + 1}/${progress.totalAssets})` : '';
-      return `Downloading${assetLabel}: ${mbDown} / ${mbTotal} MB`;
-    }
-    if (progress.phase === 'verifying') return 'Verifying integrity…';
-    if (progress.phase === 'extracting') return 'Extracting files…';
-    if (progress.phase === 'complete') return 'Installation complete!';
-    if (progress.phase === 'error') return progress.error ?? 'Download failed';
-    return '';
-  });
+  let downloadPercent = $derived(computePercent(progress));
+  let downloadStatus = $derived(formatStatus(progress));
 
   /** Load variants and install status on mount */
   $effect(() => {
@@ -219,15 +199,7 @@
 
   <!-- Download progress -->
   {#if isDownloading && progress}
-    <div class="flex flex-col gap-2">
-      <div class="h-2 w-full overflow-hidden rounded-full bg-white/10">
-        <div
-          class="h-full rounded-full transition-all duration-200"
-          style="width: {downloadPercent}%; background: var(--accent-primary);"
-        ></div>
-      </div>
-      <span class="text-[10px] text-white/50">{downloadStatus}</span>
-    </div>
+    <DownloadProgressBar percent={downloadPercent} status={downloadStatus} />
   {/if}
 
   <!-- Error message -->

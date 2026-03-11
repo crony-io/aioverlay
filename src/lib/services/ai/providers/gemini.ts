@@ -8,9 +8,8 @@ import type {
   AIStreamHandle
 } from '$lib/services/ai/types';
 import { toGeminiMessage, getTextContent } from '$lib/services/ai/messageUtils';
-import { sanitizeApiError } from '$lib/services/ai/utils/sseParser';
-
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+import { parseGeminiLine } from '$lib/services/ai/utils/sseParser';
+import { streamSSE } from '$lib/services/ai/utils/streamSSE';
 
 const GEMINI_MODELS: AIModelOption[] = [
   {
@@ -53,8 +52,6 @@ export const geminiProvider: AIProvider = {
     config: AIRequestConfig,
     onChunk: StreamChunkCallback
   ): { result: Promise<AIStreamResult>; handle: AIStreamHandle } {
-    const controller = new AbortController();
-
     const systemMessages = messages.filter((m) => m.role === 'system');
     const chatMessages = messages.filter((m) => m.role !== 'system');
 
@@ -84,65 +81,10 @@ export const geminiProvider: AIProvider = {
       body.tools = [{ google_search: {} }];
     }
 
-    const url = `${GEMINI_API_BASE}/${config.model}:streamGenerateContent?alt=sse&key=${config.apiKey}`;
-
-    const result = (async (): Promise<AIStreamResult> => {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(sanitizeApiError('Gemini', response.status, errorBody));
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body from Gemini');
-
-      const decoder = new TextDecoder();
-      let fullContent = '';
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-
-          const data = line.slice(6).trim();
-          if (!data) continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text) {
-              fullContent += text;
-              onChunk(text);
-            }
-          } catch {
-            // Skip malformed chunks
-          }
-        }
-      }
-
-      return {
-        content: fullContent,
-        model: config.model,
-        finishReason: 'stop'
-      };
-    })();
-
-    return {
-      result,
-      handle: { abort: () => controller.abort() }
-    };
+    return streamSSE(
+      { provider: 'gemini', model: config.model, body: JSON.stringify(body) },
+      parseGeminiLine,
+      onChunk
+    );
   }
 };

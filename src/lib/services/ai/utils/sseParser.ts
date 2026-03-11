@@ -1,8 +1,25 @@
 /**
- * Parse an SSE line from an OpenAI-compatible streaming response.
- * Shared by OpenAI and local llama.cpp providers.
+ * Unified SSE line parsers for all AI providers.
+ *
+ * Each parser takes a single raw SSE line and returns a
+ * `SSEParseResult` with optional `text` and/or `finishReason`,
+ * or `null` if the line is not relevant.
  */
-export function parseOpenAISSEChunk(line: string): string | null {
+
+/** Result returned by an SSE line parser. */
+export interface SSEParseResult {
+  text?: string;
+  finishReason?: string;
+}
+
+/** Generic SSE line parser signature used by `streamSSE`. */
+export type SSELineParser = (line: string) => SSEParseResult | null;
+
+/**
+ * OpenAI-compatible SSE parser.
+ * Works for OpenAI and local llama.cpp (OpenAI-compatible) providers.
+ */
+export function parseOpenAILine(line: string): SSEParseResult | null {
   if (!line.startsWith('data: ')) return null;
 
   const data = line.slice(6).trim();
@@ -10,39 +27,63 @@ export function parseOpenAISSEChunk(line: string): string | null {
 
   try {
     const parsed = JSON.parse(data);
-    return parsed.choices?.[0]?.delta?.content ?? null;
+    const text = parsed.choices?.[0]?.delta?.content;
+    const finishReason = parsed.choices?.[0]?.finish_reason;
+    if (text || finishReason)
+      return { text: text ?? undefined, finishReason: finishReason ?? undefined };
+    return null;
   } catch {
     return null;
   }
 }
 
 /**
- * Sanitize raw API error bodies into safe, user-friendly messages.
- * Strips potentially sensitive details like internal URLs, stack traces, and request IDs.
+ * Anthropic SSE parser.
+ * Extracts text from `content_block_delta` events and
+ * finish reason from `message_delta` events.
  */
-export function sanitizeApiError(providerLabel: string, status: number, rawBody: string): string {
-  const MAX_LENGTH = 200;
+export function parseAnthropicLine(line: string): SSEParseResult | null {
+  if (!line.startsWith('data: ')) return null;
+
+  const data = line.slice(6).trim();
+  if (!data) return null;
 
   try {
-    const parsed = JSON.parse(rawBody);
+    const event = JSON.parse(data) as Record<string, unknown>;
+    const eventType = event.type as string | undefined;
 
-    const message = parsed?.error?.message ?? parsed?.message ?? parsed?.error ?? null;
-
-    if (typeof message === 'string' && message.length > 0) {
-      const truncated = message.length > MAX_LENGTH ? message.slice(0, MAX_LENGTH) + '…' : message;
-      return `${providerLabel} error (${status}): ${truncated}`;
+    if (eventType === 'content_block_delta') {
+      const delta = event.delta as Record<string, unknown> | undefined;
+      if (delta?.type === 'text_delta') {
+        return { text: delta.text as string };
+      }
+    } else if (eventType === 'message_delta') {
+      const delta = event.delta as Record<string, unknown> | undefined;
+      const stopReason = delta?.stop_reason as string | undefined;
+      if (stopReason) return { finishReason: stopReason };
     }
+    return null;
   } catch {
-    // rawBody is not JSON
+    return null;
   }
+}
 
-  if (status === 401) return `${providerLabel} error: Invalid or missing API key.`;
-  if (status === 403)
-    return `${providerLabel} error: Access denied. Check your API key permissions.`;
-  if (status === 429)
-    return `${providerLabel} error: Rate limit exceeded. Please wait and try again.`;
-  if (status === 500) return `${providerLabel} error: Server error. Try again later.`;
-  if (status === 503) return `${providerLabel} error: Service temporarily unavailable.`;
+/**
+ * Gemini SSE parser.
+ * Extracts text from `candidates[0].content.parts[0].text`.
+ */
+export function parseGeminiLine(line: string): SSEParseResult | null {
+  if (!line.startsWith('data: ')) return null;
 
-  return `${providerLabel} error (${status}): Request failed. Please try again.`;
+  const data = line.slice(6).trim();
+  if (!data) return null;
+
+  try {
+    const parsed = JSON.parse(data);
+    const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (text) return { text };
+    return null;
+  } catch {
+    return null;
+  }
 }

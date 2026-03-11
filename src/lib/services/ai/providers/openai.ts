@@ -8,9 +8,8 @@ import type {
   AIStreamHandle
 } from '$lib/services/ai/types';
 import { toOpenAIMessage } from '$lib/services/ai/messageUtils';
-import { parseOpenAISSEChunk, sanitizeApiError } from '$lib/services/ai/utils/sseParser';
-
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+import { parseOpenAILine } from '$lib/services/ai/utils/sseParser';
+import { streamSSE } from '$lib/services/ai/utils/streamSSE';
 
 const OPENAI_MODELS: AIModelOption[] = [
   {
@@ -50,8 +49,6 @@ export const openaiProvider: AIProvider = {
     config: AIRequestConfig,
     onChunk: StreamChunkCallback
   ): { result: Promise<AIStreamResult>; handle: AIStreamHandle } {
-    const controller = new AbortController();
-
     const effectiveModel = config.webSearchEnabled
       ? (SEARCH_MODEL_MAP[config.model] ?? config.model)
       : config.model;
@@ -68,56 +65,10 @@ export const openaiProvider: AIProvider = {
     if (config.temperature !== undefined) body.temperature = config.temperature;
     if (config.maxTokens !== undefined) body.max_tokens = config.maxTokens;
 
-    const result = (async (): Promise<AIStreamResult> => {
-      const response = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.apiKey}`
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(sanitizeApiError('OpenAI', response.status, errorBody));
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body from OpenAI');
-
-      const decoder = new TextDecoder();
-      let fullContent = '';
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const chunk = parseOpenAISSEChunk(line);
-          if (chunk) {
-            fullContent += chunk;
-            onChunk(chunk);
-          }
-        }
-      }
-
-      return {
-        content: fullContent,
-        model: config.model,
-        finishReason: 'stop'
-      };
-    })();
-
-    return {
-      result,
-      handle: { abort: () => controller.abort() }
-    };
+    return streamSSE(
+      { provider: 'openai', model: config.model, body: JSON.stringify(body) },
+      parseOpenAILine,
+      onChunk
+    );
   }
 };

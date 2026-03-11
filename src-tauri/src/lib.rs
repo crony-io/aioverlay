@@ -1,3 +1,4 @@
+mod ai_proxy;
 mod capture;
 mod input;
 mod llama;
@@ -23,9 +24,14 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(ai_proxy::SecureKeyStore::default())
+        .manage(ai_proxy::ActiveStreams::default())
         .invoke_handler(tauri::generate_handler![
             input::simulate_copy,
             capture::take_screenshot,
+            ai_proxy::store_provider_key,
+            ai_proxy::stream_ai_request,
+            ai_proxy::cancel_ai_stream,
             llama::platform::detect_gpu,
             llama::platform::get_available_variants,
             llama::platform::get_install_status,

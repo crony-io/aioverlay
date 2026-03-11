@@ -7,7 +7,6 @@ import type {
 } from '$lib/services/ai/types';
 import { saveConversation, generateTitle } from '$lib/chatHistory';
 import { getProvider } from '$lib/services/ai/registry';
-import { getApiKey } from '$lib/storage';
 
 /** Regex to match inline base64 images in markdown: ![alt](data:mime;base64,DATA) */
 const BASE64_IMAGE_REGEX = /!\[[^\]]*\]\(data:([^;]+);base64,([^)]+)\)/g;
@@ -106,17 +105,10 @@ export async function sendMessageAndStream(opts: {
   }
 
   onConversationUpdate(conversation);
-  await saveConversation(conversation);
+  if (!conversation.ephemeral) await saveConversation(conversation);
 
   const providerId = getActiveProvider();
   const modelId = getActiveModel();
-
-  const apiKey = providerId !== 'local' ? await getApiKey(providerId) : 'local';
-
-  if (!apiKey) {
-    onError(`No API key configured for ${providerId}. Please add one in Settings.`);
-    return null;
-  }
 
   const provider = getProvider(providerId);
   const model = modelId || provider.models[0]?.id || '';
@@ -131,7 +123,6 @@ export async function sendMessageAndStream(opts: {
     const { result, handle } = provider.streamChat(
       aiMessages,
       {
-        apiKey,
         model,
         systemPrompt: systemPrompt || undefined,
         maxTokens: 4096,
@@ -154,7 +145,7 @@ export async function sendMessageAndStream(opts: {
     };
 
     conversation.messages = [...conversation.messages, assistantMessage];
-    await saveConversation(conversation);
+    if (!conversation.ephemeral) await saveConversation(conversation);
     onComplete(conversation);
 
     return handle;
@@ -170,7 +161,7 @@ export async function sendMessageAndStream(opts: {
           incomplete: true
         };
         conversation.messages = [...conversation.messages, partialMessage];
-        await saveConversation(conversation);
+        if (!conversation.ephemeral) await saveConversation(conversation);
         onComplete(conversation);
       }
       return null;

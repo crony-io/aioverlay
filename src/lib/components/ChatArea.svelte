@@ -3,13 +3,22 @@
   import Markdown from '$lib/components/Markdown.svelte';
   import TypingIndicator from '$lib/components/TypingIndicator.svelte';
   import { formatRelativeTime } from '$lib/utils/formatTime';
-  import { MessageSquare, Command, Camera, X, TriangleAlert, Sparkles } from 'lucide-svelte';
+  import {
+    MessageSquare,
+    Command,
+    Camera,
+    X,
+    TriangleAlert,
+    Sparkles,
+    EyeOff
+  } from 'lucide-svelte';
 
   let {
     messages = [],
     isLoading = false,
     streamingContent = '',
     errorMessage = '',
+    ephemeral = false,
     onDismissError,
     onQuickPrompt
   } = $props<{
@@ -17,6 +26,7 @@
     isLoading?: boolean;
     streamingContent?: string;
     errorMessage?: string;
+    ephemeral?: boolean;
     onDismissError?: () => void;
     onQuickPrompt?: (text: string) => void;
   }>();
@@ -48,6 +58,15 @@
   bind:this={scrollContainer}
   class="flex flex-1 flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar"
 >
+  {#if ephemeral}
+    <div
+      class="flex items-center justify-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-[11px] text-amber-300/80 mt-2"
+    >
+      <EyeOff class="h-3 w-3 shrink-0" />
+      <span>Ephemeral mode — this conversation won't be saved</span>
+    </div>
+  {/if}
+
   {#if messages.length === 0 && !isLoading}
     <div
       class="flex h-full flex-col items-center justify-center text-center"
