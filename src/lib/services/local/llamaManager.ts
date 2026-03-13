@@ -62,7 +62,11 @@ export async function getInstallStatus(): Promise<InstallStatus> {
 // ---------------------------------------------------------------------------
 
 /** Download and install a specific llama.cpp variant */
-export async function downloadLlamaServer(variantId: string, version: string, assetNames: string[]): Promise<void> {
+export async function downloadLlamaServer(
+  variantId: string,
+  version: string,
+  assetNames: string[]
+): Promise<void> {
   await invoke('download_llama_server', { variantId, version, assetNames });
 }
 
@@ -76,7 +80,11 @@ export async function deleteLlamaInstallation(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /** Start the llama-server process */
-export async function startServer(modelPath: string, port?: number, mmprojPath?: string): Promise<number> {
+export async function startServer(
+  modelPath: string,
+  port?: number,
+  mmprojPath?: string
+): Promise<number> {
   const actualPort = port ?? getSavedPort();
   const resultPort = await invoke<number>('start_llama_server', {
     modelPath,

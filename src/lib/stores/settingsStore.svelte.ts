@@ -11,7 +11,8 @@ const KEYS = {
   PROVIDER: 'activeProvider',
   MODEL: 'activeModel',
   SYSTEM_PROMPT: 'systemPrompt',
-  WEB_SEARCH: 'webSearchEnabled'
+  WEB_SEARCH: 'webSearchEnabled',
+  VISION: 'activeModelSupportsVision'
 } as const;
 
 function loadProvider(): AIProviderID {
@@ -30,7 +31,7 @@ let _activeProvider = $state<AIProviderID>(loadProvider());
 let _activeModel = $state(localStorage.getItem(KEYS.MODEL) || '');
 let _systemPrompt = $state(localStorage.getItem(KEYS.SYSTEM_PROMPT) || '');
 let _webSearchEnabled = $state(localStorage.getItem(KEYS.WEB_SEARCH) === 'true');
-let _activeModelSupportsVision = $state(false);
+let _activeModelSupportsVision = $state(localStorage.getItem(KEYS.VISION) === 'true');
 let _serverStatus = $state<ServerStatus>('idle');
 let _serverStatusMessage = $state('');
 
@@ -85,6 +86,7 @@ export const settingsStore = {
   },
   set activeModelSupportsVision(v: boolean) {
     _activeModelSupportsVision = v;
+    localStorage.setItem(KEYS.VISION, String(v));
   },
 
   /** Current local server lifecycle status */

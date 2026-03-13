@@ -80,6 +80,11 @@ export async function ensureServerRunning(): Promise<void> {
       settingsStore.serverStatus = 'ready';
       settingsStore.serverStatusMessage = `Server running on port ${resultPort}`;
       startHealthPolling();
+
+      // Sync vision support from the active model's metadata
+      if (activeModelConf) {
+        settingsStore.activeModelSupportsVision = modelHasVision(activeModelConf);
+      }
     } else {
       settingsStore.serverStatus = 'error';
       settingsStore.serverStatusMessage = 'Server started but health check timed out';

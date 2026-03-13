@@ -17,6 +17,7 @@
     formatFileSize
   } from '$lib/services/local/modelManager';
   import { switchLocalModel } from '$lib/services/local/serverOrchestrator';
+  import { settingsStore } from '$lib/stores/settingsStore.svelte';
   import { computePercent, formatStatus } from '$lib/utils/downloadProgress';
   import { showError } from '$lib/stores/errorStore.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -50,7 +51,6 @@
   // ---------------------------------------------------------------------------
 
   let downloadedModels = $state<DownloadedModel[]>([]);
-  let activeFilename = $state(getActiveModelFilename());
 
   let searchQuery = $state('');
   let searchResults = $state<HfModelResult[]>([]);
@@ -103,9 +103,9 @@
     try {
       downloadedModels = await listDownloadedModels();
       // Validate active model still exists
-      if (activeFilename && !downloadedModels.some((m) => m.filename === activeFilename)) {
+      const currentActive = getActiveModelFilename();
+      if (currentActive && !downloadedModels.some((m) => m.filename === currentActive)) {
         clearActiveModel();
-        activeFilename = '';
       }
     } catch (e) {
       showError(e);
@@ -160,7 +160,6 @@
           // Auto-activate the newly downloaded model
           const downloaded = downloadedModels.find((m) => m.filename === filename);
           if (downloaded) {
-            activeFilename = downloaded.filename;
             await switchLocalModel(downloaded);
           }
           onModelsChanged();
@@ -178,14 +177,6 @@
     }
   }
 
-  async function handleActivate(filename: string) {
-    const model = downloadedModels.find((m) => m.filename === filename);
-    if (!model) return;
-    activeFilename = filename;
-    await switchLocalModel(model);
-    onModelsChanged();
-  }
-
   function requestDeleteModel(filename: string) {
     pendingDeleteFilename = filename;
   }
@@ -197,9 +188,8 @@
     isDeleting = filename;
     try {
       await deleteModel(filename);
-      if (activeFilename === filename) {
+      if (getActiveModelFilename() === filename) {
         clearActiveModel();
-        activeFilename = '';
       }
       await loadDownloadedModels();
       onModelsChanged();
@@ -234,24 +224,22 @@
   {#if downloadedModels.length > 0}
     <div class="flex flex-col gap-1.5">
       {#each downloadedModels as model (model.filename)}
-        {@const isActive = model.filename === activeFilename}
+        {@const isActive = model.filePath === settingsStore.activeModel}
         <div
-          class="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors {isActive
+          class="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 {isActive
             ? 'border-indigo-500/30 bg-indigo-500/5'
-            : 'border-white/5 bg-white/2 hover:bg-white/4'}"
+            : 'border-white/5 bg-white/2'}"
         >
-          <button
-            class="flex min-w-0 flex-1 items-center gap-2 text-left"
-            onclick={() => handleActivate(model.filename)}
-            title={isActive ? 'Active model' : 'Click to activate'}
-          >
+          <div class="flex min-w-0 flex-1 items-center gap-2">
             {#if isActive}
               <BadgeCheck class="h-3.5 w-3.5 shrink-0 text-indigo-400" />
             {:else}
               <HardDrive class="h-3.5 w-3.5 shrink-0 text-white/20" />
             {/if}
             <div class="flex flex-col min-w-0">
-              <span class="text-xs text-white/80 truncate">{model.filename}</span>
+              <span class="text-xs {isActive ? 'text-white/90' : 'text-white/60'} truncate"
+                >{model.filename}</span
+              >
               <span class="text-[10px] text-white/30 truncate">
                 {model.repoId} · {formatFileSize(model.size)}
                 {#if model.pipelineTag === 'image-text-to-text' || model.tags?.includes('vision')}
@@ -259,7 +247,7 @@
                 {/if}
               </span>
             </div>
-          </button>
+          </div>
           <button
             class="shrink-0 rounded-md p-1 text-white/20 transition-colors hover:bg-red-500/10 hover:text-red-400"
             onclick={() => requestDeleteModel(model.filename)}

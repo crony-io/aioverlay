@@ -70,6 +70,24 @@
     return getModelsForProvider(settingsStore.activeProvider);
   });
 
+  /** Sync vision support on mount and whenever provider/model/localModels change.
+   *  This ensures vision is always correct — even on app startup before user interaction. */
+  $effect(() => {
+    const provider = settingsStore.activeProvider;
+    const modelId = settingsStore.activeModel;
+
+    if (provider === 'local') {
+      if (localModels.length > 0) {
+        const model = localModels.find((m) => m.id === modelId);
+        settingsStore.activeModelSupportsVision = model?.supportsVision ?? false;
+      }
+    } else {
+      const models = getModelsForProvider(provider);
+      const model = models.find((m) => m.id === modelId);
+      settingsStore.activeModelSupportsVision = model?.supportsVision ?? false;
+    }
+  });
+
   let searchActive = $derived.by(() => {
     try {
       const provider = getProvider(settingsStore.activeProvider);
