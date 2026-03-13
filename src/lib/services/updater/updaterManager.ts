@@ -1,6 +1,5 @@
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { showError } from '$lib/stores/errorStore.svelte';
 
 export interface UpdateInfo {
   version: string;
@@ -31,8 +30,8 @@ export async function checkForUpdate(): Promise<{ info: UpdateInfo; update: Upda
       },
       update
     };
-  } catch (e) {
-    showError(e);
+  } catch {
+    // Silently ignore update check failures (no network, no release published, etc.)
     return null;
   }
 }

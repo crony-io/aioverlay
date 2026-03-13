@@ -1,10 +1,17 @@
 use crate::llama::platform::{install_meta_path, InstallMeta};
-use command_group::{CommandGroup, GroupChild};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+/// Windows: CREATE_NO_WINDOW prevents a visible console window.
+/// DETACHED_PROCESS detaches from the parent's console entirely.
+#[cfg(target_os = "windows")]
+const DETACHED_NO_WINDOW: u32 = 0x08000000 | 0x00000008;
+
 /// Holds the running llama-server child process so we can stop it on demand.
-static LLAMA_PROCESS: Mutex<Option<GroupChild>> = Mutex::new(None);
+static LLAMA_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
 
 /// Resolve the binary path from the persisted install metadata.
 fn resolve_binary_path(app: &tauri::AppHandle) -> Result<String, String> {
@@ -72,7 +79,17 @@ pub fn start_llama_server(
         cmd.arg("--mmproj").arg(mp);
     }
 
-    let child = cmd.group_spawn().map_err(|e| format!("Failed to spawn llama-server: {e}"))?;
+    // Ensure the process runs silently in the background on all platforms.
+    // - Windows: CREATE_NO_WINDOW prevents a visible console window.
+    // - All OSes: Redirect stdio to null so there's no terminal attachment.
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(DETACHED_NO_WINDOW);
+
+    let child = cmd.spawn().map_err(|e| format!("Failed to spawn llama-server: {e}"))?;
 
     *guard = Some(child);
 

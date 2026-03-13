@@ -72,9 +72,16 @@ fn detect_gpu_internal() -> GpuInfo {
     };
 
     // Try nvidia-smi (available on all platforms when NVIDIA drivers are installed)
-    if let Ok(output) = std::process::Command::new("nvidia-smi")
-        .args(["--query-gpu=name", "--format=csv,noheader,nounits"])
-        .output()
+    let mut nvidia_cmd = std::process::Command::new("nvidia-smi");
+    nvidia_cmd.args(["--query-gpu=name", "--format=csv,noheader,nounits"]);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        nvidia_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    if let Ok(output) = nvidia_cmd.output()
     {
         if output.status.success() {
             let name = String::from_utf8_lossy(&output.stdout).trim().to_string();

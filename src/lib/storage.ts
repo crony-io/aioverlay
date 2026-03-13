@@ -2,7 +2,6 @@ import { Stronghold } from '@tauri-apps/plugin-stronghold';
 import type { Store, Client } from '@tauri-apps/plugin-stronghold';
 import { exists, readTextFile, writeTextFile, remove, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { storeProviderKey } from '$lib/services/ai/rustProxy';
-import { showError } from '$lib/stores/errorStore.svelte';
 
 /** Secure vault path (new per-install encrypted vault) */
 const VAULT_PATH = 'keys.vault';
@@ -20,6 +19,9 @@ const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini'] as const;
 
 let strongholdInstance: Stronghold | null = null;
 let storeInstance: Store | null = null;
+
+/** Promise-based lock to prevent concurrent `initStorage()` calls */
+let initPromise: Promise<Store> | null = null;
 
 // ---------------------------------------------------------------------------
 // Per-install vault password derivation
@@ -105,9 +107,25 @@ async function readLegacyKeys(): Promise<Map<string, string>> {
 // Initialization
 // ---------------------------------------------------------------------------
 
-async function initStorage(): Promise<Store> {
-  if (storeInstance) return storeInstance;
+/**
+ * Delete a stale vault so it can be recreated from scratch.
+ * Removes both the vault file and any Stronghold snapshot files.
+ */
+async function purgeVault(): Promise<void> {
+  for (const file of [VAULT_PATH]) {
+    try {
+      await remove(file, { baseDir: BaseDirectory.AppData });
+    } catch {
+      // File may not exist — that's fine
+    }
+  }
+}
 
+/**
+ * Core initialisation logic (called only once via the lock below).
+ * Creates or recovers the Stronghold vault, migrating legacy keys if needed.
+ */
+async function doInitStorage(): Promise<Store> {
   const salt = await getOrCreateSalt();
   const password = await deriveVaultPassword(salt);
 
@@ -153,8 +171,15 @@ async function initStorage(): Promise<Store> {
     }
   }
 
-  // Normal path: load or create the secure vault
-  strongholdInstance = await Stronghold.load(VAULT_PATH, password);
+  // Normal path: load or create the secure vault.
+  // If the vault exists but can't be decrypted (BadFileKey / corrupt), purge
+  // it and start fresh so the user isn't stuck with a permanent error.
+  try {
+    strongholdInstance = await Stronghold.load(VAULT_PATH, password);
+  } catch {
+    await purgeVault();
+    strongholdInstance = await Stronghold.load(VAULT_PATH, password);
+  }
 
   let client: Client;
   try {
@@ -165,6 +190,22 @@ async function initStorage(): Promise<Store> {
 
   storeInstance = client.getStore();
   return storeInstance;
+}
+
+/**
+ * Public entry-point with a promise-based lock so only a single init
+ * attempt runs at a time. Concurrent callers await the same promise.
+ */
+async function initStorage(): Promise<Store> {
+  if (storeInstance) return storeInstance;
+  if (initPromise) return initPromise;
+
+  initPromise = doInitStorage().catch((err) => {
+    // Reset so a future call can retry
+    initPromise = null;
+    throw err;
+  });
+  return initPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,13 +222,13 @@ export async function saveApiKey(provider: string, key: string): Promise<void> {
 }
 
 export async function getApiKey(provider: string): Promise<string | null> {
-  const store = await initStorage();
   try {
+    const store = await initStorage();
     const data = await store.get(provider);
     if (!data) return null;
     return new TextDecoder().decode(data);
-  } catch (e) {
-    showError(e);
+  } catch {
+    // Vault failures are non-critical — keys can be re-entered
     return null;
   }
 }
