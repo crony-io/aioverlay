@@ -15,6 +15,7 @@ export interface LlamaVariant {
   assetNames: string[];
   recommended: boolean;
   sizeMb: number;
+  version: string;
 }
 
 /** Status of the current llama-server installation */
@@ -70,6 +71,8 @@ export interface DownloadedModel {
   pipelineTag: string | null;
   /** HuggingFace tags — stored for capability detection */
   tags: string[];
+  /** Path to multimodal projector file if applicable */
+  mmprojPath?: string;
 }
 
 /** Progress event payload for model file downloads */

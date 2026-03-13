@@ -2,9 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::Manager;
 
-/// Pinned llama.cpp release tag
-pub const LLAMA_RELEASE_TAG: &str = "b8261";
-
 /// GitHub release download base URL
 pub const GITHUB_RELEASE_BASE: &str = "https://github.com/ggml-org/llama.cpp/releases/download";
 
@@ -35,6 +32,7 @@ pub struct LlamaVariant {
     pub asset_names: Vec<String>,
     pub recommended: bool,
     pub size_mb: u32,
+    pub version: String,
 }
 
 /// Persisted metadata about the current llama-server installation
@@ -111,7 +109,11 @@ pub fn install_meta_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 /// Expected binary name for the current platform.
 pub fn server_binary_name() -> &'static str {
-    if cfg!(target_os = "windows") { "llama-server.exe" } else { "llama-server" }
+    if cfg!(target_os = "windows") {
+        "llama-server.exe"
+    } else {
+        "llama-server"
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -124,12 +126,38 @@ pub fn detect_gpu() -> GpuInfo {
     detect_gpu_internal()
 }
 
+#[derive(serde::Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+}
+
+/// Fetch the latest release tag from the official llama.cpp repo.
+pub async fn fetch_latest_release_tag() -> Result<String, String> {
+    let url = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .header("User-Agent", "aioverlay/0.1")
+        .send()
+        .await
+        .map_err(|e| format!("GitHub API request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("GitHub API returned status {}", response.status()));
+    }
+
+    let release: GitHubRelease =
+        response.json().await.map_err(|e| format!("Failed to parse GitHub release: {e}"))?;
+
+    Ok(release.tag_name)
+}
+
 /// Return the list of downloadable llama.cpp variants compatible with the
 /// current platform. Variants are ordered with the recommended one first.
 #[tauri::command]
-pub fn get_available_variants() -> Vec<LlamaVariant> {
+pub async fn get_available_variants() -> Result<Vec<LlamaVariant>, String> {
+    let tag = fetch_latest_release_tag().await?;
     let gpu = detect_gpu_internal();
-    let tag = LLAMA_RELEASE_TAG;
 
     let mut variants: Vec<LlamaVariant> = Vec::new();
 
@@ -154,6 +182,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                         ],
                         recommended: true,
                         size_mb: 615,
+                        version: tag.clone(),
                     });
                 }
 
@@ -165,6 +194,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                     asset_names: vec![format!("llama-{tag}-bin-win-vulkan-x64.zip")],
                     recommended: !gpu.has_nvidia,
                     size_mb: 52,
+                    version: tag.clone(),
                 });
 
                 // CUDA 13.1 (alternative for latest drivers)
@@ -179,6 +209,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                         ],
                         recommended: false,
                         size_mb: 555,
+                        version: tag.clone(),
                     });
                 }
 
@@ -191,6 +222,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                         asset_names: vec![format!("llama-{tag}-bin-win-hip-radeon-x64.zip")],
                         recommended: false,
                         size_mb: 349,
+                        version: tag.clone(),
                     });
                 }
 
@@ -202,6 +234,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                     asset_names: vec![format!("llama-{tag}-bin-win-cpu-x64.zip")],
                     recommended: false,
                     size_mb: 35,
+                    version: tag.clone(),
                 });
             }
             "aarch64" => {
@@ -212,6 +245,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                     asset_names: vec![format!("llama-{tag}-bin-win-cpu-arm64.zip")],
                     recommended: true,
                     size_mb: 28,
+                    version: tag.clone(),
                 });
             }
             _ => {}
@@ -226,6 +260,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                     asset_names: vec![format!("llama-{tag}-bin-macos-arm64.tar.gz")],
                     recommended: true,
                     size_mb: 36,
+                    version: tag.clone(),
                 });
             }
             "x86_64" => {
@@ -236,6 +271,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                     asset_names: vec![format!("llama-{tag}-bin-macos-x64.tar.gz")],
                     recommended: true,
                     size_mb: 93,
+                    version: tag.clone(),
                 });
             }
             _ => {}
@@ -250,6 +286,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                 asset_names: vec![format!("llama-{tag}-bin-ubuntu-vulkan-x64.tar.gz")],
                 recommended: gpu.has_nvidia,
                 size_mb: 46,
+                version: tag.clone(),
             });
 
             // AMD ROCm
@@ -260,6 +297,7 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                 asset_names: vec![format!("llama-{tag}-bin-ubuntu-rocm-7.2-x64.tar.gz")],
                 recommended: false,
                 size_mb: 149,
+                version: tag.clone(),
             });
 
             // CPU fallback
@@ -270,13 +308,14 @@ pub fn get_available_variants() -> Vec<LlamaVariant> {
                 asset_names: vec![format!("llama-{tag}-bin-ubuntu-x64.tar.gz")],
                 recommended: !gpu.has_nvidia,
                 size_mb: 29,
+                version: tag.clone(),
             });
         }
 
         _ => {}
     }
 
-    variants
+    Ok(variants)
 }
 
 /// Check whether llama-server is already installed and return its status.

@@ -33,6 +33,13 @@
       textareaEl?.focus();
     }
   });
+
+  /** Auto-focus when an image is attached so Enter sends immediately */
+  $effect(() => {
+    if (attachedImage) {
+      textareaEl?.focus();
+    }
+  });
   let textareaEl: HTMLTextAreaElement | undefined = $state();
 
   /** When user focuses the input and local provider needs a server, auto-start it */

@@ -38,7 +38,9 @@ pub fn run() {
         .manage(ai_proxy::ActiveStreams::default())
         .invoke_handler(tauri::generate_handler![
             input::simulate_copy,
-            capture::take_screenshot,
+            capture::start_screenshot_mode,
+            capture::capture_region,
+            capture::cancel_screenshot_mode,
             shortcuts::update_global_shortcuts,
             ai_proxy::store_provider_key,
             ai_proxy::stream_ai_request,
@@ -58,10 +60,13 @@ pub fn run() {
             llama::models::delete_model,
             llama::models::get_models_dir,
         ])
-        .on_window_event(|_window, event| {
+        .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                // Kill llama-server when the window is destroyed
-                llama::process::kill_llama_process();
+                // Only kill llama-server when the main window is destroyed (app exit),
+                // not when overlay windows (screenshot capture) are closed.
+                if window.label() == "main" {
+                    llama::process::kill_llama_process();
+                }
             }
         })
         .run(tauri::generate_context!())

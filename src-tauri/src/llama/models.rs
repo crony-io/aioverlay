@@ -75,6 +75,9 @@ pub struct DownloadedModel {
     /// HuggingFace tags — stored for capability detection
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Optional path to the mmproj file for vision models
+    #[serde(default)]
+    pub mmproj_path: Option<String>,
 }
 
 /// Root of the metadata file.
@@ -208,17 +211,75 @@ pub async fn download_model(
     let client = reqwest::Client::new();
 
     // Fetch model metadata from HF API to capture capabilities (pipeline_tag, tags)
-    let (pipeline_tag, tags) = {
-        let info_url = format!("{HF_API_BASE}/{repo_id}");
+    let info_url = format!("{HF_API_BASE}/{repo_id}");
+    let (pipeline_tag, tags) =
         match client.get(&info_url).header("User-Agent", "aioverlay/0.1").send().await {
             Ok(resp) if resp.status().is_success() => match resp.json::<HfModelResult>().await {
                 Ok(info) => (info.pipeline_tag, info.tags),
                 Err(_) => (None, Vec::new()),
             },
             _ => (None, Vec::new()),
+        };
+
+    // Find if there's an mmproj file in the repo
+    let mut mmproj_filename = None;
+    let tree_url = format!("{HF_API_BASE}/{repo_id}/tree/main");
+    if let Ok(resp) = client.get(&tree_url).header("User-Agent", "aioverlay/0.1").send().await {
+        if resp.status().is_success() {
+            if let Ok(entries) = resp.json::<Vec<HfTreeEntry>>().await {
+                for e in entries {
+                    if e.entry_type == "file"
+                        && e.path.contains("mmproj")
+                        && e.path.ends_with(".gguf")
+                    {
+                        mmproj_filename = Some(e.path);
+                        break;
+                    }
+                }
+            }
         }
+    }
+
+    let final_path = dir.join(&filename);
+    let bytes_downloaded = download_file_to(&app, &repo_id, &filename, &final_path).await?;
+
+    let mut mmproj_path: Option<String> = None;
+    if let Some(m_name) = mmproj_filename {
+        let m_path = dir.join(&m_name);
+        // The optional download might fail but we shouldn't fail the primary model download entirely.
+        if let Ok(_) = download_file_to(&app, &repo_id, &m_name, &m_path).await {
+            mmproj_path = Some(m_path.to_string_lossy().to_string());
+        }
+    }
+
+    let now = chrono_now();
+    let model = DownloadedModel {
+        repo_id: repo_id.clone(),
+        filename: filename.clone(),
+        file_path: final_path.to_string_lossy().to_string(),
+        size: bytes_downloaded,
+        downloaded_at: now,
+        pipeline_tag,
+        tags,
+        mmproj_path,
     };
 
+    // Update metadata file
+    let mut meta = read_meta(&app);
+    meta.models.retain(|m| m.filename != filename);
+    meta.models.push(model.clone());
+    write_meta(&app, &meta)?;
+
+    Ok(model)
+}
+
+async fn download_file_to(
+    app: &tauri::AppHandle,
+    repo_id: &str,
+    filename: &str,
+    final_path: &std::path::Path,
+) -> Result<u64, String> {
+    let client = reqwest::Client::new();
     let download_url = format!("https://huggingface.co/{repo_id}/resolve/main/{filename}");
     let response = client
         .get(&download_url)
@@ -233,7 +294,7 @@ pub async fn download_model(
         app.emit(
             MODEL_PROGRESS_EVENT,
             ModelDownloadProgress {
-                filename: filename.clone(),
+                filename: filename.to_string(),
                 bytes_downloaded: 0,
                 total_bytes: 0,
                 phase: "error".into(),
@@ -245,8 +306,8 @@ pub async fn download_model(
     }
 
     let total_bytes = response.content_length().unwrap_or(0);
+    let dir = final_path.parent().unwrap();
     let tmp_path = dir.join(format!("{filename}.tmp"));
-    let final_path = dir.join(&filename);
 
     let mut file = tokio::fs::File::create(&tmp_path)
         .await
@@ -262,7 +323,7 @@ pub async fn download_model(
             app.emit(
                 MODEL_PROGRESS_EVENT,
                 ModelDownloadProgress {
-                    filename: filename.clone(),
+                    filename: filename.to_string(),
                     bytes_downloaded,
                     total_bytes,
                     phase: "error".into(),
@@ -273,9 +334,10 @@ pub async fn download_model(
             err
         })?;
 
-        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
-            .await
-            .map_err(|e| format!("Failed to write chunk: {e}"))?;
+        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await {
+            let _ = tokio::fs::remove_file(&tmp_path).await; // Cleanup on error
+            return Err(format!("Failed to write chunk: {e}"));
+        }
 
         bytes_downloaded += chunk.len() as u64;
 
@@ -283,7 +345,7 @@ pub async fn download_model(
             app.emit(
                 MODEL_PROGRESS_EVENT,
                 ModelDownloadProgress {
-                    filename: filename.clone(),
+                    filename: filename.to_string(),
                     bytes_downloaded,
                     total_bytes,
                     phase: "downloading".into(),
@@ -295,39 +357,21 @@ pub async fn download_model(
         }
     }
 
-    tokio::io::AsyncWriteExt::flush(&mut file)
-        .await
-        .map_err(|e| format!("Failed to flush file: {e}"))?;
+    if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(format!("Failed to flush file: {e}"));
+    }
     drop(file);
 
-    // Rename tmp → final
-    tokio::fs::rename(&tmp_path, &final_path)
-        .await
-        .map_err(|e| format!("Failed to finalize model file: {e}"))?;
+    if let Err(e) = tokio::fs::rename(&tmp_path, final_path).await {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(format!("Failed to finalize model file: {e}"));
+    }
 
-    // Build metadata entry
-    let now = chrono_now();
-    let model = DownloadedModel {
-        repo_id: repo_id.clone(),
-        filename: filename.clone(),
-        file_path: final_path.to_string_lossy().to_string(),
-        size: bytes_downloaded,
-        downloaded_at: now,
-        pipeline_tag,
-        tags,
-    };
-
-    // Update metadata file
-    let mut meta = read_meta(&app);
-    meta.models.retain(|m| m.filename != filename);
-    meta.models.push(model.clone());
-    write_meta(&app, &meta)?;
-
-    // Emit completion
     app.emit(
         MODEL_PROGRESS_EVENT,
         ModelDownloadProgress {
-            filename,
+            filename: filename.to_string(),
             bytes_downloaded,
             total_bytes,
             phase: "complete".into(),
@@ -336,7 +380,7 @@ pub async fn download_model(
     )
     .ok();
 
-    Ok(model)
+    Ok(bytes_downloaded)
 }
 
 /// List all downloaded GGUF models.

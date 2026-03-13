@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ChatMessage } from '$lib/types';
   import Markdown from '$lib/components/Markdown.svelte';
+  import UserMessage from '$lib/components/UserMessage.svelte';
   import TypingIndicator from '$lib/components/TypingIndicator.svelte';
   import { formatRelativeTime } from '$lib/utils/formatTime';
   import {
@@ -125,7 +126,7 @@
           {#if msg.role === 'assistant'}
             <Markdown content={msg.content} />
           {:else}
-            <p class="whitespace-pre-wrap text-sm">{msg.content}</p>
+            <UserMessage content={msg.content} />
           {/if}
         </div>
         <div class="mt-1 flex items-center gap-1.5 px-2">

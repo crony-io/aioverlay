@@ -24,7 +24,6 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import ConversationList from '$lib/components/ConversationList.svelte';
   import Settings from '$lib/components/Settings.svelte';
-  import ScreenshotOverlay from '$lib/components/ScreenshotOverlay.svelte';
   import UpdateNotification from '$lib/components/UpdateNotification.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import { errorStore, showError } from '$lib/stores/errorStore.svelte';
@@ -88,9 +87,6 @@
   /** Base64 image data for screenshot attachment preview (U2) */
   let attachedImage = $state('');
 
-  // Screenshot state
-  let screenshotData = $state<{ data: string; width: number; height: number } | null>(null);
-
   // Conversation state
   let conversations = $state<ConversationMeta[]>([]);
   let currentConversation = $state<Conversation>(createConversation());
@@ -117,7 +113,7 @@
     onShortcutAction((action, payload) => {
       showSettings = false;
       if (action === 'captureText' && payload) {
-        prefillText = payload;
+        prefillText = payload as string;
       }
       if (action === 'captureScreen' && payload) {
         if (!settingsStore.activeModelSupportsVision) {
@@ -126,11 +122,7 @@
           );
           return;
         }
-        try {
-          screenshotData = JSON.parse(payload);
-        } catch (e) {
-          showError(`Failed to parse screenshot data: ${e}`);
-        }
+        attachedImage = payload as string;
       }
     });
 
@@ -181,9 +173,12 @@
     streamingContent = '';
 
     try {
-      const handle = await sendMessageAndStream({
+      await sendMessageAndStream({
         conversation: currentConversation,
         userText: text,
+        onHandle: (handle) => {
+          currentStreamHandle = handle;
+        },
         onConversationUpdate: (conv) => {
           currentConversation = { ...conv };
           if (!conv.ephemeral) loadConversationList().then((list) => (conversations = list));
@@ -212,8 +207,6 @@
           currentStreamHandle = null;
         }
       });
-
-      currentStreamHandle = handle;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to send message';
       errorMessage = msg;
@@ -305,17 +298,6 @@
       currentConversation = createConversation();
     }
   }
-
-  /** Handle confirmed screenshot selection — show preview thumbnail so user can add a prompt */
-  function handleScreenshotConfirm(croppedBase64: string) {
-    screenshotData = null;
-    attachedImage = croppedBase64;
-  }
-
-  /** Cancel screenshot selection */
-  function handleScreenshotCancel() {
-    screenshotData = null;
-  }
 </script>
 
 {#if errorStore.error}
@@ -325,14 +307,6 @@
     confirmLabel="OK"
     onConfirm={() => errorStore.dismiss()}
     onCancel={() => errorStore.dismiss()}
-  />
-{/if}
-
-{#if screenshotData}
-  <ScreenshotOverlay
-    {screenshotData}
-    onConfirm={handleScreenshotConfirm}
-    onCancel={handleScreenshotCancel}
   />
 {/if}
 

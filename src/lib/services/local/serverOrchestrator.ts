@@ -66,7 +66,12 @@ export async function ensureServerRunning(): Promise<void> {
   try {
     const modelPath = getSavedModelPath();
     const port = getSavedPort();
-    const resultPort = await startServer(modelPath, port);
+
+    const models = await listDownloadedModels();
+    const activeModelConf = models.find((m) => m.filePath === modelPath);
+    const mmprojPath = activeModelConf?.mmprojPath;
+
+    const resultPort = await startServer(modelPath, port, mmprojPath);
 
     settingsStore.serverStatusMessage = 'Waiting for server to be ready…';
     const ready = await waitForServerReady(resultPort, 30000);

@@ -14,7 +14,7 @@ export type ShortcutAction =
   | 'toggleSettings';
 
 /** Callback when a shortcut action fires */
-export type ShortcutActionHandler = (action: ShortcutAction, payload?: string) => void;
+export type ShortcutActionHandler = (action: ShortcutAction, payload?: unknown) => void;
 
 /** Listener for registration status changes */
 export type StatusChangeListener = (status: ShortcutRegistrationStatus) => void;
@@ -88,6 +88,8 @@ let lastRegistrationError: string | null = null;
 let statusListeners: StatusChangeListener[] = [];
 let unlistenShortcut: UnlistenFn | null = null;
 let unlistenError: UnlistenFn | null = null;
+let unlistenScreenshot: UnlistenFn | null = null;
+let unlistenScreenshotCancel: UnlistenFn | null = null;
 
 /** Migrate old localStorage keys to new format (one-time) */
 function migrateOldBindings(): void {
@@ -217,19 +219,14 @@ async function handleCaptureText(): Promise<void> {
   }
 }
 
-/** Screen capture: hide overlay, take screenshot via xcap, then show overlay */
+/** Screen capture: hide overlay, trigger the live multi-monitor overlay */
 async function handleCaptureScreen(): Promise<void> {
   try {
     const win = getCurrentWindow();
     await win.hide();
 
-    // Small delay so the overlay is fully hidden before capture
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    const result = await invoke<{ data: string; width: number; height: number }>('take_screenshot');
-
-    await showOverlay();
-    actionHandler?.('captureScreen', JSON.stringify(result));
+    await invoke('start_screenshot_mode');
+    // Result handling is offloaded to 'screenshot-captured' listener
   } catch (e) {
     showError(e);
     await showOverlay();
@@ -254,6 +251,21 @@ export async function registerShortcuts(): Promise<void> {
   if (!unlistenError) {
     unlistenError = await listen<string>('shortcut-error', (event) => {
       showError(event.payload);
+    });
+  }
+
+  // Listen for screenshot completions from the live overlay
+  if (!unlistenScreenshot) {
+    unlistenScreenshot = await listen<string>('screenshot-captured', async (event) => {
+      await showOverlay();
+      actionHandler?.('captureScreen', event.payload);
+    });
+  }
+
+  // Listen for screenshot cancellations
+  if (!unlistenScreenshotCancel) {
+    unlistenScreenshotCancel = await listen<void>('screenshot-canceled', async () => {
+      await showOverlay();
     });
   }
 
@@ -322,5 +334,9 @@ export async function cleanupShortcuts(): Promise<void> {
   unlistenShortcut = null;
   unlistenError?.();
   unlistenError = null;
+  unlistenScreenshot?.();
+  unlistenScreenshot = null;
+  unlistenScreenshotCancel?.();
+  unlistenScreenshotCancel = null;
   registeredShortcuts = [];
 }

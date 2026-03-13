@@ -79,8 +79,17 @@ export async function sendMessageAndStream(opts: {
   onStreamChunk: (fullContent: string) => void;
   onComplete: (conv: Conversation) => void;
   onError: (error: string) => void;
-}): Promise<AIStreamHandle | null> {
-  const { conversation, userText, onConversationUpdate, onStreamChunk, onComplete, onError } = opts;
+  onHandle?: (handle: AIStreamHandle) => void;
+}): Promise<void> {
+  const {
+    conversation,
+    userText,
+    onConversationUpdate,
+    onStreamChunk,
+    onComplete,
+    onError,
+    onHandle
+  } = opts;
 
   const userMessage: ChatMessage = {
     id: crypto.randomUUID(),
@@ -109,7 +118,7 @@ export async function sendMessageAndStream(opts: {
     const apiKey = await getApiKey(providerId);
     if (!apiKey) {
       onError(`No API key configured for ${provider.label}. Add one in Settings → API Keys.`);
-      return null;
+      return;
     }
   }
 
@@ -134,6 +143,8 @@ export async function sendMessageAndStream(opts: {
       }
     );
 
+    onHandle?.(handle);
+
     const streamResult = await result;
 
     const assistantMessage: ChatMessage = {
@@ -147,8 +158,6 @@ export async function sendMessageAndStream(opts: {
     conversation.messages = [...conversation.messages, assistantMessage];
     if (!conversation.ephemeral) await saveConversation(conversation);
     onComplete(conversation);
-
-    return handle;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       if (streamedContent) {
@@ -164,11 +173,10 @@ export async function sendMessageAndStream(opts: {
         if (!conversation.ephemeral) await saveConversation(conversation);
         onComplete(conversation);
       }
-      return null;
+      return;
     }
 
     const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred';
     onError(errorMsg);
-    return null;
   }
 }

@@ -1,9 +1,10 @@
-use crate::llama::platform::{InstallMeta, install_meta_path};
-use std::process::{Child, Command};
+use crate::llama::platform::{install_meta_path, InstallMeta};
+use command_group::{CommandGroup, GroupChild};
+use std::process::Command;
 use std::sync::Mutex;
 
 /// Holds the running llama-server child process so we can stop it on demand.
-static LLAMA_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+static LLAMA_PROCESS: Mutex<Option<GroupChild>> = Mutex::new(None);
 
 /// Resolve the binary path from the persisted install metadata.
 fn resolve_binary_path(app: &tauri::AppHandle) -> Result<String, String> {
@@ -37,6 +38,7 @@ pub fn start_llama_server(
     app: tauri::AppHandle,
     model_path: String,
     port: Option<u16>,
+    mmproj_path: Option<String>,
 ) -> Result<u16, String> {
     let mut guard = LLAMA_PROCESS.lock().map_err(|e| e.to_string())?;
 
@@ -52,22 +54,25 @@ pub fn start_llama_server(
     let working_dir =
         binary.parent().ok_or_else(|| "Cannot determine binary directory".to_string())?;
 
-    let child = Command::new(&binary_path)
-        .current_dir(working_dir)
-        .args([
-            "--model",
-            &model_path,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            &actual_port.to_string(),
-            "--ctx-size",
-            "8192",
-            "--n-gpu-layers",
-            "999",
-        ])
-        .spawn()
-        .map_err(|e| format!("Failed to spawn llama-server: {e}"))?;
+    let mut cmd = Command::new(&binary_path);
+    cmd.current_dir(working_dir).args([
+        "--model",
+        &model_path,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        &actual_port.to_string(),
+        "--ctx-size",
+        "8192",
+        "--n-gpu-layers",
+        "999",
+    ]);
+
+    if let Some(mp) = mmproj_path {
+        cmd.arg("--mmproj").arg(mp);
+    }
+
+    let child = cmd.group_spawn().map_err(|e| format!("Failed to spawn llama-server: {e}"))?;
 
     *guard = Some(child);
 

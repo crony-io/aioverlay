@@ -1,40 +1,39 @@
 <script lang="ts">
   import {
-    startServer,
-    stopServer,
-    isServerRunning,
-    waitForServerReady,
     getInstallStatus,
     getSavedModelPath,
     getSavedPort,
-    saveModelPath,
     savePort
   } from '$lib/services/local/llamaManager';
+  import {
+    ensureServerRunning,
+    shutdownServer,
+    switchLocalModelByPath
+  } from '$lib/services/local/serverOrchestrator';
   import { invoke } from '@tauri-apps/api/core';
   import type { DownloadedModel } from '$lib/services/local/types';
   import { showError } from '$lib/stores/errorStore.svelte';
+  import { settingsStore } from '$lib/stores/settingsStore.svelte';
   import { Play, Square, RefreshCw, BadgeCheck, BadgeAlert, Loader } from 'lucide-svelte';
 
-  /** When the active model or refreshKey changes externally, we re-fetch state */
+  /** When the active model or refreshKey changes externally, we re-fetch model list */
   let { activeModel = '', refreshKey = 0 } = $props<{
     activeModel?: string;
     refreshKey?: number;
   }>();
 
-  let running = $state(false);
-  let starting = $state(false);
-  let statusMessage = $state('');
-  let statusType = $state<'info' | 'success' | 'error'>('info');
   let installed = $state(false);
-
   let modelPath = $state(getSavedModelPath());
   let port = $state(getSavedPort());
   let downloadedModels = $state<DownloadedModel[]>([]);
 
-  /** Load initial state */
+  /** Derived server state from the single source of truth */
+  let isRunning = $derived(settingsStore.serverStatus === 'ready');
+  let isStarting = $derived(settingsStore.serverStatus === 'starting');
+
+  /** Load model list and install status */
   async function loadState() {
     try {
-      running = await isServerRunning();
       const status = await getInstallStatus();
       installed = status.installed;
       const models: DownloadedModel[] = await invoke('list_downloaded_models');
@@ -60,56 +59,17 @@
   });
 
   async function handleStart() {
-    if (!modelPath) {
-      statusMessage = 'Select a model first';
-      statusType = 'error';
-      return;
-    }
-
-    starting = true;
-    statusMessage = 'Starting server…';
-    statusType = 'info';
-
-    try {
-      saveModelPath(modelPath);
-      savePort(port);
-      const resultPort = await startServer(modelPath, port);
-      statusMessage = 'Waiting for server to be ready…';
-
-      const ready = await waitForServerReady(resultPort, 30000);
-      if (ready) {
-        running = true;
-        statusMessage = `Server running on port ${resultPort}`;
-        statusType = 'success';
-      } else {
-        statusMessage = 'Server started but health check timed out';
-        statusType = 'error';
-        running = true;
-      }
-    } catch (e) {
-      statusMessage = e instanceof Error ? e.message : String(e);
-      statusType = 'error';
-    } finally {
-      starting = false;
-    }
+    if (!modelPath) return;
+    savePort(port);
+    await switchLocalModelByPath(modelPath);
   }
 
   async function handleStop() {
-    try {
-      await stopServer();
-      running = false;
-      statusMessage = 'Server stopped';
-      statusType = 'info';
-    } catch (e) {
-      statusMessage = e instanceof Error ? e.message : String(e);
-      statusType = 'error';
-    }
+    await shutdownServer();
   }
 
   async function handleRefresh() {
-    running = await isServerRunning();
-    statusMessage = running ? 'Server is running' : 'Server is not running';
-    statusType = running ? 'success' : 'info';
+    await ensureServerRunning();
   }
 </script>
 
@@ -118,7 +78,12 @@
     <div class="flex items-center justify-between">
       <div class="text-xs font-semibold text-white/50 uppercase tracking-wider">Local Server</div>
       <div class="flex items-center gap-1.5">
-        {#if running}
+        {#if isStarting}
+          <span class="flex items-center gap-1 text-[10px] text-amber-400/70">
+            <Loader class="h-3 w-3 animate-spin" />
+            Starting
+          </span>
+        {:else if isRunning}
           <span class="flex items-center gap-1 text-[10px] text-emerald-400/70">
             <BadgeCheck class="h-3 w-3" />
             Running
@@ -139,7 +104,7 @@
         <select
           id="server-model"
           bind:value={modelPath}
-          disabled={running || starting}
+          disabled={isRunning || isStarting}
           class="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {#each downloadedModels as model (model.filePath)}
@@ -162,14 +127,14 @@
         bind:value={port}
         min="1"
         max="65535"
-        disabled={running || starting}
+        disabled={isRunning || isStarting}
         class="w-20 rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
       />
     </div>
 
     <!-- Controls -->
     <div class="flex items-center gap-2">
-      {#if running}
+      {#if isRunning}
         <button
           onclick={handleStop}
           class="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-500/20"
@@ -180,10 +145,10 @@
       {:else}
         <button
           onclick={handleStart}
-          disabled={starting || !modelPath}
+          disabled={isStarting || !modelPath}
           class="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {#if starting}
+          {#if isStarting}
             <Loader class="h-3 w-3 animate-spin" />
             Starting…
           {:else}
@@ -203,15 +168,15 @@
     </div>
 
     <!-- Status message -->
-    {#if statusMessage}
+    {#if settingsStore.serverStatusMessage}
       <div
-        class="text-[11px] {statusType === 'success'
+        class="text-[11px] {settingsStore.serverStatus === 'ready'
           ? 'text-emerald-400/70'
-          : statusType === 'error'
+          : settingsStore.serverStatus === 'error'
             ? 'text-red-400/70'
             : 'text-white/40'}"
       >
-        {statusMessage}
+        {settingsStore.serverStatusMessage}
       </div>
     {/if}
   </div>

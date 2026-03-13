@@ -1,6 +1,5 @@
 use crate::llama::platform::{
-    InstallMeta, LLAMA_RELEASE_TAG, asset_download_url, install_dir, install_meta_path,
-    server_binary_name,
+    asset_download_url, install_dir, install_meta_path, server_binary_name, InstallMeta,
 };
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -86,10 +85,12 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<Vec<PathBuf>, Stri
 
     for entry_result in archive.entries().map_err(|e| format!("Failed to read tar entries: {e}"))? {
         let mut entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
-        let out_path = dest.join(entry.path().map_err(|e| format!("Invalid tar entry path: {e}"))?);
 
-        entry.unpack(&out_path).map_err(|e| format!("Failed to unpack tar entry: {e}"))?;
+        let filepath =
+            entry.path().map_err(|e| format!("Invalid tar entry path: {e}"))?.to_path_buf();
+        entry.unpack_in(dest).map_err(|e| format!("Failed to unpack tar entry: {e}"))?;
 
+        let out_path = dest.join(filepath);
         if out_path.is_file() {
             extracted.push(out_path);
         }
@@ -190,6 +191,7 @@ async fn fetch_release_checksums(client: &reqwest::Client, tag: &str) -> HashMap
 pub async fn download_llama_server(
     app: tauri::AppHandle,
     variant_id: String,
+    version: String,
     asset_names: Vec<String>,
 ) -> Result<(), String> {
     let dest = install_dir(&app)?;
@@ -203,7 +205,7 @@ pub async fn download_llama_server(
     std::fs::create_dir_all(&bin_dir)
         .map_err(|e| format!("Failed to create install directory: {e}"))?;
 
-    let tag = LLAMA_RELEASE_TAG;
+    let tag = &version;
     let total_assets = asset_names.len();
     let client = reqwest::Client::new();
 
@@ -253,12 +255,18 @@ pub async fn download_llama_server(
         let mut last_emit = std::time::Instant::now();
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk =
-                chunk_result.map_err(|e| format!("Download stream error for {asset_name}: {e}"))?;
+            let chunk = match chunk_result {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                    return Err(format!("Download stream error for {asset_name}: {e}"));
+                }
+            };
 
-            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
-                .await
-                .map_err(|e| format!("Failed to write chunk: {e}"))?;
+            if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await {
+                let _ = tokio::fs::remove_file(&tmp_path).await;
+                return Err(format!("Failed to write chunk: {e}"));
+            }
 
             bytes_downloaded += chunk.len() as u64;
 
@@ -281,9 +289,10 @@ pub async fn download_llama_server(
         }
 
         // Flush file
-        tokio::io::AsyncWriteExt::flush(&mut file)
-            .await
-            .map_err(|e| format!("Failed to flush file: {e}"))?;
+        if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(format!("Failed to flush file: {e}"));
+        }
         drop(file);
 
         // --- Verify phase ---

@@ -22,6 +22,7 @@
   });
 
   let selectedVariantId = $state<string>('');
+  let isLoading = $state(true);
   let isDownloading = $state(false);
   let isDeleting = $state(false);
   let showDeleteConfirm = $state(false);
@@ -37,6 +38,7 @@
   });
 
   async function loadData() {
+    isLoading = true;
     try {
       const [v, status] = await Promise.all([getAvailableVariants(), getInstallStatus()]);
       variants = v;
@@ -51,6 +53,8 @@
       }
     } catch (e) {
       showError(e);
+    } finally {
+      isLoading = false;
     }
   }
 
@@ -75,7 +79,7 @@
     });
 
     try {
-      await downloadLlamaServer(variant.id, variant.assetNames);
+      await downloadLlamaServer(variant.id, variant.version, variant.assetNames);
     } catch (e) {
       downloadError = e instanceof Error ? e.message : String(e);
       isDownloading = false;
@@ -114,7 +118,13 @@
     Local Inference Engine
   </div>
 
-  {#if installStatus.installed}
+  {#if isLoading}
+    <!-- Checking install status -->
+    <div class="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+      <Loader class="h-4 w-4 shrink-0 text-white/40 animate-spin" />
+      <span class="text-xs text-white/40">Checking llama-server installation…</span>
+    </div>
+  {:else if installStatus.installed}
     <!-- Installed state -->
     <div
       class="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2"
