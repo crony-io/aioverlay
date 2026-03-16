@@ -1,21 +1,43 @@
 import { Stronghold } from '@tauri-apps/plugin-stronghold';
 import type { Store, Client } from '@tauri-apps/plugin-stronghold';
-import { exists, readTextFile, writeTextFile, remove, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { exists, readTextFile, writeTextFile, remove } from '@tauri-apps/plugin-fs';
+import { appDataDir } from '@tauri-apps/api/path';
 import { storeProviderKey } from '$lib/services/ai/rustProxy';
+import { showError } from '$lib/stores/errorStore.svelte';
 
-/** Secure vault path (new per-install encrypted vault) */
-const VAULT_PATH = 'keys.vault';
+/** File names stored inside the AppData directory */
+const VAULT_FILENAME = 'keys.vault';
+const SALT_FILENAME = 'vault.salt';
 const STORE_NAME = 'api_keys';
 
-/** Salt file used to derive a unique vault password per installation */
-const SALT_FILE = 'vault.salt';
-
-/** Legacy vault path and password — used only for one-time migration */
-const LEGACY_VAULT_PATH = 'aioverlay_keys.vault';
+/** Legacy vault filename and password — used only for one-time migration */
+const LEGACY_VAULT_FILENAME = 'aioverlay_keys.vault';
 const LEGACY_PASS = 'aioverlay-secure-local-key';
+
+/** Cached absolute base directory resolved once at runtime */
+let resolvedAppDataDir: string | null = null;
+
+/** Resolves and caches the absolute AppData directory path */
+async function getAppDataPath(): Promise<string> {
+  if (!resolvedAppDataDir) {
+    resolvedAppDataDir = await appDataDir();
+  }
+  return resolvedAppDataDir;
+}
+
+/** Builds an absolute path inside the AppData directory */
+async function appDataFile(filename: string): Promise<string> {
+  const dir = await getAppDataPath();
+  // Normalise separator for Windows
+  const sep = dir.endsWith('\\') || dir.endsWith('/') ? '' : '/';
+  return `${dir}${sep}${filename}`;
+}
 
 /** Provider IDs whose keys may exist in the legacy vault */
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini'] as const;
+
+/** In-memory cache so keys survive Stronghold read failures within a session */
+const keyCache = new Map<string, string>();
 
 let strongholdInstance: Stronghold | null = null;
 let storeInstance: Store | null = null;
@@ -33,11 +55,14 @@ let initPromise: Promise<Store> | null = null;
  * is never a hard-coded constant shared across installs.
  */
 export async function getOrCreateSalt(): Promise<string> {
+  const saltPath = await appDataFile(SALT_FILENAME);
   try {
-    const saltExists = await exists(SALT_FILE, { baseDir: BaseDirectory.AppData });
+    const saltExists = await exists(saltPath);
     if (saltExists) {
-      const salt = await readTextFile(SALT_FILE, { baseDir: BaseDirectory.AppData });
-      if (salt && salt.length === 64) return salt;
+      const raw = await readTextFile(saltPath);
+      // Trim to handle Windows BOM/CRLF/whitespace that readTextFile may include
+      const salt = raw?.trim().replace(/^\uFEFF/, '');
+      if (salt && salt.length === 64 && /^[0-9a-f]{64}$/.test(salt)) return salt;
     }
   } catch {
     // Salt doesn't exist yet — will be created below
@@ -49,7 +74,7 @@ export async function getOrCreateSalt(): Promise<string> {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
-  await writeTextFile(SALT_FILE, salt, { baseDir: BaseDirectory.AppData });
+  await writeTextFile(saltPath, salt);
   return salt;
 }
 
@@ -78,7 +103,8 @@ async function deriveVaultPassword(salt: string): Promise<string> {
 async function readLegacyKeys(): Promise<Map<string, string>> {
   const keys = new Map<string, string>();
   try {
-    const legacySh = await Stronghold.load(LEGACY_VAULT_PATH, LEGACY_PASS);
+    const legacyPath = await appDataFile(LEGACY_VAULT_FILENAME);
+    const legacySh = await Stronghold.load(legacyPath, LEGACY_PASS);
     let client: Client;
     try {
       client = await legacySh.loadClient(STORE_NAME);
@@ -108,15 +134,24 @@ async function readLegacyKeys(): Promise<Map<string, string>> {
 // ---------------------------------------------------------------------------
 
 /**
- * Delete a stale vault so it can be recreated from scratch.
- * Removes both the vault file and any Stronghold snapshot files.
+ * Delete vault and salt files so both are recreated from scratch.
+ * Also resets module-level state so the next initStorage() call
+ * performs a full re-initialisation.
  */
 async function purgeVault(): Promise<void> {
-  for (const file of [VAULT_PATH]) {
+  strongholdInstance = null;
+  storeInstance = null;
+  initPromise = null;
+
+  for (const filename of [VAULT_FILENAME, SALT_FILENAME]) {
     try {
-      await remove(file, { baseDir: BaseDirectory.AppData });
-    } catch {
-      // File may not exist — that's fine
+      const absPath = await appDataFile(filename);
+      const fileExists = await exists(absPath);
+      if (fileExists) {
+        await remove(absPath);
+      }
+    } catch (e) {
+      showError(`purgeVault: could not delete ${filename}: ${e}`);
     }
   }
 }
@@ -128,11 +163,12 @@ async function purgeVault(): Promise<void> {
 async function doInitStorage(): Promise<Store> {
   const salt = await getOrCreateSalt();
   const password = await deriveVaultPassword(salt);
+  const vaultPath = await appDataFile(VAULT_FILENAME);
 
   // Check if the secure vault already exists
   let secureVaultExists = false;
   try {
-    secureVaultExists = await exists(VAULT_PATH, { baseDir: BaseDirectory.AppData });
+    secureVaultExists = await exists(vaultPath);
   } catch {
     // Assume it doesn't exist
   }
@@ -141,7 +177,8 @@ async function doInitStorage(): Promise<Store> {
     // Check for a legacy vault that needs migration
     let legacyExists = false;
     try {
-      legacyExists = await exists(LEGACY_VAULT_PATH, { baseDir: BaseDirectory.AppData });
+      const legacyPath = await appDataFile(LEGACY_VAULT_FILENAME);
+      legacyExists = await exists(legacyPath);
     } catch {
       // No legacy vault
     }
@@ -149,8 +186,8 @@ async function doInitStorage(): Promise<Store> {
     if (legacyExists) {
       const migratedKeys = await readLegacyKeys();
 
-      // Create new secure vault
-      strongholdInstance = await Stronghold.load(VAULT_PATH, password);
+      // Create new secure vault using absolute path
+      strongholdInstance = await Stronghold.load(vaultPath, password);
       const client = await strongholdInstance.createClient(STORE_NAME);
       storeInstance = client.getStore();
 
@@ -162,7 +199,8 @@ async function doInitStorage(): Promise<Store> {
 
       // Remove legacy vault file
       try {
-        await remove(LEGACY_VAULT_PATH, { baseDir: BaseDirectory.AppData });
+        const legacyPath = await appDataFile(LEGACY_VAULT_FILENAME);
+        await remove(legacyPath);
       } catch {
         // Legacy vault removal is non-critical
       }
@@ -173,12 +211,27 @@ async function doInitStorage(): Promise<Store> {
 
   // Normal path: load or create the secure vault.
   // If the vault exists but can't be decrypted (BadFileKey / corrupt), purge
-  // it and start fresh so the user isn't stuck with a permanent error.
+  // both vault + salt and re-derive everything from scratch.
   try {
-    strongholdInstance = await Stronghold.load(VAULT_PATH, password);
-  } catch {
+    strongholdInstance = await Stronghold.load(vaultPath, password);
+  } catch (loadErr) {
+    // Purge vault AND salt so both are regenerated
     await purgeVault();
-    strongholdInstance = await Stronghold.load(VAULT_PATH, password);
+
+    // Verify vault file is actually gone (Windows file-lock edge case)
+    const stillExists = await exists(vaultPath).catch(() => false);
+    if (stillExists) {
+      throw new Error(
+        `Cannot recover vault (file locked). Delete "${VAULT_FILENAME}" from AppData and restart.`,
+        { cause: loadErr }
+      );
+    }
+
+    // Re-derive password with the fresh salt that purgeVault created space for
+    const freshSalt = await getOrCreateSalt();
+    const freshPassword = await deriveVaultPassword(freshSalt);
+    const freshVaultPath = await appDataFile(VAULT_FILENAME);
+    strongholdInstance = await Stronghold.load(freshVaultPath, freshPassword);
   }
 
   let client: Client;
@@ -217,6 +270,10 @@ export async function saveApiKey(provider: string, key: string): Promise<void> {
   const bytes = Array.from(new TextEncoder().encode(key));
   await store.insert(provider, bytes);
   await strongholdInstance?.save();
+
+  // Update in-memory cache
+  keyCache.set(provider, key);
+
   // Sync to Rust's in-memory SecureKeyStore so HTTP proxy can use it
   await storeProviderKey(provider, key);
 }
@@ -225,11 +282,19 @@ export async function getApiKey(provider: string): Promise<string | null> {
   try {
     const store = await initStorage();
     const data = await store.get(provider);
-    if (!data) return null;
-    return new TextDecoder().decode(data);
-  } catch {
-    // Vault failures are non-critical — keys can be re-entered
-    return null;
+    if (!data || data.length === 0) {
+      // Fall back to in-memory cache if Stronghold returned nothing
+      return keyCache.get(provider) ?? null;
+    }
+    // Ensure we have a proper Uint8Array for TextDecoder
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const decoded = new TextDecoder().decode(bytes);
+    if (decoded) keyCache.set(provider, decoded);
+    return decoded;
+  } catch (e) {
+    showError(`Failed to read API key for ${provider}: ${e}`);
+    // Fall back to in-memory cache
+    return keyCache.get(provider) ?? null;
   }
 }
 
@@ -237,6 +302,10 @@ export async function removeApiKey(provider: string): Promise<void> {
   const store = await initStorage();
   await store.remove(provider);
   await strongholdInstance?.save();
+
+  // Clear from in-memory cache
+  keyCache.delete(provider);
+
   // Remove from Rust's in-memory SecureKeyStore
   await storeProviderKey(provider, '');
 }

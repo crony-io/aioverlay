@@ -8,7 +8,7 @@
   import SystemPrompt from '$lib/components/settings/SystemPrompt.svelte';
   import LocalModelSetup from '$lib/components/settings/LocalModelSetup.svelte';
   import ModelDownloader from '$lib/components/settings/ModelDownloader.svelte';
-  import { Key, MessageSquare, Server, Keyboard } from 'lucide-svelte';
+  import { Key, MessageSquare, Server, Keyboard, Save } from 'lucide-svelte';
 
   type SettingsTab = 'keys' | 'identity' | 'local' | 'shortcuts';
 
@@ -29,11 +29,7 @@
   let shortcutBindings = $state<Record<ShortcutAction, string>>(getAllBindings());
 
   let savedStatus = $state('');
-  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  /** Tracks values loaded from vault so we only save actual user changes */
-  let loadedKeys = $state({ openai: '', anthropic: '', gemini: '' });
-  let canSave = $state(false);
+  let isSaving = $state(false);
 
   async function loadSettings() {
     try {
@@ -41,52 +37,34 @@
       anthropicKey = (await getApiKey('anthropic')) || '';
       geminiKey = (await getApiKey('gemini')) || '';
 
-      loadedKeys = { openai: openAiKey, anthropic: anthropicKey, gemini: geminiKey };
       systemPrompt = settingsStore.systemPrompt;
       shortcutBindings = getAllBindings();
-
-      // Allow saves only after load completes and the reactive cycle settles
-      requestAnimationFrame(() => {
-        canSave = true;
-      });
     } catch (e) {
       showError(e);
     }
   }
 
-  /** Debounced auto-save triggered by reactive changes */
-  function scheduleSave() {
-    if (!canSave) return;
-    if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => performSave(), 800);
-  }
-
-  async function performSave() {
+  /** Saves all API keys to the encrypted vault */
+  async function saveKeys() {
+    isSaving = true;
+    savedStatus = '';
     try {
-      // Only save keys that actually changed from what was loaded
-      if (openAiKey !== loadedKeys.openai) {
-        if (openAiKey) await saveApiKey('openai', openAiKey);
-        else await removeApiKey('openai');
-        loadedKeys.openai = openAiKey;
-      }
+      if (openAiKey) await saveApiKey('openai', openAiKey);
+      else await removeApiKey('openai');
 
-      if (anthropicKey !== loadedKeys.anthropic) {
-        if (anthropicKey) await saveApiKey('anthropic', anthropicKey);
-        else await removeApiKey('anthropic');
-        loadedKeys.anthropic = anthropicKey;
-      }
+      if (anthropicKey) await saveApiKey('anthropic', anthropicKey);
+      else await removeApiKey('anthropic');
 
-      if (geminiKey !== loadedKeys.gemini) {
-        if (geminiKey) await saveApiKey('gemini', geminiKey);
-        else await removeApiKey('gemini');
-        loadedKeys.gemini = geminiKey;
-      }
+      if (geminiKey) await saveApiKey('gemini', geminiKey);
+      else await removeApiKey('gemini');
 
       savedStatus = 'Saved ✓';
       setTimeout(() => (savedStatus = ''), 2000);
     } catch (e) {
       savedStatus = 'Error saving!';
       showError(e);
+    } finally {
+      isSaving = false;
     }
   }
 
@@ -95,19 +73,9 @@
     loadSettings();
   });
 
-  // Sync system prompt to store
+  // Sync system prompt to store reactively
   $effect(() => {
-    if (!canSave) return;
     settingsStore.systemPrompt = systemPrompt;
-  });
-
-  // Debounced auto-save for API keys (only fires after initial load settles)
-  $effect(() => {
-    void openAiKey;
-    void anthropicKey;
-    void geminiKey;
-
-    scheduleSave();
   });
 </script>
 
@@ -140,6 +108,29 @@
       <div class="flex flex-col gap-3">
         <h3 class="text-xs font-semibold text-white/50 uppercase tracking-wider">API Keys</h3>
         <ApiKeysList bind:openAiKey bind:anthropicKey bind:geminiKey />
+
+        <div class="flex items-center gap-2">
+          <button
+            onclick={saveKeys}
+            disabled={isSaving}
+            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium
+              bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30
+              disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Save class="h-3.5 w-3.5" />
+            {isSaving ? 'Saving…' : 'Save Keys'}
+          </button>
+          {#if savedStatus}
+            <span
+              class="text-xs font-medium"
+              style="color: {savedStatus.startsWith('Error')
+                ? 'var(--accent-danger)'
+                : 'var(--accent-success)'};"
+            >
+              {savedStatus}
+            </span>
+          {/if}
+        </div>
       </div>
     {:else if activeSettingsTab === 'identity'}
       <div class="flex flex-col gap-3">
@@ -158,15 +149,6 @@
       <div class="flex flex-col gap-3">
         <h3 class="text-xs font-semibold text-white/50 uppercase tracking-wider">Shortcuts</h3>
         <GlobalShortcuts bind:bindings={shortcutBindings} />
-      </div>
-    {/if}
-
-    <!-- Auto-save status indicator -->
-    {#if savedStatus}
-      <div class="mt-3 text-center">
-        <span class="text-xs font-medium" style="color: var(--accent-success);">
-          {savedStatus}
-        </span>
       </div>
     {/if}
   </div>
